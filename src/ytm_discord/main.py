@@ -53,8 +53,9 @@ def main() -> int:
     log.info("Config: %s", cfg_file)
     log.info("Polling every %ss. Play something on music.youtube.com.", cfg.poll_interval_seconds)
     log.info(
-        "Where to see it: click your avatar (bottom-left) -> profile card "
-        "shows 'Listening to ...'. It is NOT the Spotify green panel."
+        "Display mode: %s (alongside=Listening with game on profile, "
+        "override=Playing to compete with game status, watching=Watching)",
+        cfg.display_mode,
     )
 
     had_track = False

@@ -10,7 +10,15 @@ You will see it as:
 2. Click **your avatar (bottom-left)** → profile card → **Listening to YouTube Music** with song + artist
 3. Or open a server and look at **yourself in the member list**
 
-Name your Discord application **YouTube Music** so the label reads “Listening to YouTube Music”.
+Name your Discord application **YouTube Music** so the label reads correctly.
+
+### Games + music
+
+Discord prioritizes game detection over Listening activities. Use `display_mode` in config:
+
+- `override` (default) — send as Playing (competes with game status)
+- `alongside` — Listening (game stays primary; music on full profile)
+- `watching` — Watching activity type
 
 ---
 

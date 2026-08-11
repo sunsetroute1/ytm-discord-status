@@ -21,6 +21,10 @@ DEFAULT_SUPPORTED_APPS = (
     "youtube",
 )
 
+# Discord hides Listening under detected games. Playing/Watching compete better
+# for the primary activity line; Listening still appears on the full profile.
+DISPLAY_MODES = ("alongside", "override", "watching")
+
 
 @dataclass(frozen=True)
 class PresenceConfig:
@@ -34,6 +38,10 @@ class AppConfig:
     poll_interval_seconds: float = 5.0
     clear_on_pause: bool = True
     reconnect_interval_seconds: float = 15.0
+    # alongside = Listening (shows with game on full profile, often hidden in compact UI)
+    # override  = Playing  (competes with the game for the primary activity line)
+    # watching  = Watching (alternate priority between the two)
+    display_mode: str = "override"
     supported_apps: tuple[str, ...] = DEFAULT_SUPPORTED_APPS
     presence: PresenceConfig = field(default_factory=PresenceConfig)
 
@@ -53,11 +61,18 @@ class AppConfig:
         if "client_id" not in data:
             raise ValueError("client_id is required")
 
+        display_mode = str(data.get("display_mode", "override")).strip().lower()
+        if display_mode not in DISPLAY_MODES:
+            raise ValueError(
+                f"display_mode must be one of: {', '.join(DISPLAY_MODES)}"
+            )
+
         return cls(
             client_id=str(data["client_id"]).strip(),
             poll_interval_seconds=float(data.get("poll_interval_seconds", 5)),
             clear_on_pause=bool(data.get("clear_on_pause", True)),
             reconnect_interval_seconds=float(data.get("reconnect_interval_seconds", 15)),
+            display_mode=display_mode,
             supported_apps=tuple(
                 str(a).lower().strip() for a in supported if str(a).strip()
             ),

@@ -51,6 +51,7 @@ def test_rejects_non_numeric(tmp_path: Path) -> None:
 def test_from_dict_defaults() -> None:
     cfg = AppConfig.from_dict({"client_id": "1"})
     assert cfg.clear_on_pause is True
+    assert cfg.display_mode == "override"
     assert "brave" in cfg.supported_apps
 
 
@@ -60,3 +61,26 @@ def test_ensure_user_config(tmp_path: Path, monkeypatch) -> None:
     assert dest.exists()
     data = json.loads(dest.read_text(encoding="utf-8"))
     assert data["client_id"] == "123456789012345678"
+
+
+def test_display_mode_override(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    path.write_text(
+        json.dumps({"client_id": "1536877982222913626", "display_mode": "alongside"}),
+        encoding="utf-8",
+    )
+    cfg = load_config(path)
+    assert cfg.display_mode == "alongside"
+
+
+def test_rejects_bad_display_mode(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    path.write_text(
+        json.dumps({"client_id": "1536877982222913626", "display_mode": "nope"}),
+        encoding="utf-8",
+    )
+    try:
+        load_config(path)
+        raise AssertionError("expected ValueError")
+    except ValueError as exc:
+        assert "display_mode" in str(exc)

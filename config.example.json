@@ -3,6 +3,7 @@
   "poll_interval_seconds": 5,
   "clear_on_pause": true,
   "reconnect_interval_seconds": 15,
+  "display_mode": "override",
   "supported_apps": [
     "chrome",
     "msedge",

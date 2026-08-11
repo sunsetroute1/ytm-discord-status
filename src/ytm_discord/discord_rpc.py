@@ -19,9 +19,17 @@ class DiscordStatus:
         self._presence = presence
         self._rpc: Presence | None = None
         self._connected = False
-        self._last_track_key: tuple[str, str, str] | None = None
+        self._last_track_key: tuple[str, str, str, str] | None = None
         self._last_connect_attempt = 0.0
         self._had_presence = False
+
+    @staticmethod
+    def _activity_type(display_mode: str) -> ActivityType:
+        if display_mode == "override":
+            return ActivityType.PLAYING
+        if display_mode == "watching":
+            return ActivityType.WATCHING
+        return ActivityType.LISTENING
 
     @property
     def connected(self) -> bool:
@@ -95,19 +103,20 @@ class DiscordStatus:
             self.clear()
             return
 
-        track_key = track.track_key
+        activity_type = self._activity_type(cfg.display_mode)
+        track_key = (*track.track_key, cfg.display_mode)
         if track_key == self._last_track_key and self._connected:
             return
 
         if not self.ensure_connected(cfg.reconnect_interval_seconds) or self._rpc is None:
             return
 
-        # details = song, state = artist (same layout people expect from music RPCs)
+        # details = song, state = artist
         payload: dict[str, Any] = {
             "details": track.title,
             "state": track.artist,
             "large_text": self._presence.large_text,
-            "activity_type": ActivityType.LISTENING,
+            "activity_type": activity_type,
         }
 
         if (
@@ -128,7 +137,13 @@ class DiscordStatus:
             self._last_track_key = track_key
             self._had_presence = True
             status = "playing" if track.playing else "paused"
-            log.info("Presence updated (%s): %s - %s", status, track.artist, track.title)
+            log.info(
+                "Presence updated (%s/%s): %s - %s",
+                status,
+                cfg.display_mode,
+                track.artist,
+                track.title,
+            )
         except Exception as exc:  # noqa: BLE001
             log.warning("Failed to update presence: %s", exc)
             self._mark_disconnected()

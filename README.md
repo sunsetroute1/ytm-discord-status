@@ -10,7 +10,21 @@ This is **not** the green Spotify bar in Discord’s bottom-left (that UI is Spo
 2. Click **your avatar (bottom-left)** → profile card shows song + artist  
 3. Or check yourself in a server **member list**
 
-Name the Discord app **YouTube Music** so it reads “Listening to YouTube Music”.
+Name the Discord app **YouTube Music** so it reads correctly.
+
+### Playing a game at the same time
+
+Discord prioritizes detected games over **Listening**, so music can disappear from the compact status while you game.
+
+Set `display_mode` in `config.json`:
+
+| Mode | Behavior |
+|------|----------|
+| `override` (default) | Sends as **Playing** so music competes with the game for the primary activity line |
+| `alongside` | Sends as **Listening**; game stays primary; music still on your full profile |
+| `watching` | Sends as **Watching** (middle ground) |
+
+We cannot remove Discord’s game activity — both can exist; the client picks what to emphasize.
 
 ## Install
 
