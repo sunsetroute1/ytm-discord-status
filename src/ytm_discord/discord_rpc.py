@@ -7,6 +7,7 @@ from typing import Any
 from pypresence import ActivityType, Presence
 from pypresence.exceptions import DiscordNotFound, InvalidID, InvalidPipe
 
+from .artwork import ArtworkResolver
 from .config import AppConfig, PresenceConfig
 from .media import NowPlaying
 
@@ -14,9 +15,10 @@ log = logging.getLogger(__name__)
 
 
 class DiscordStatus:
-    def __init__(self, client_id: str, presence: PresenceConfig) -> None:
+    def __init__(self, client_id: str, presence: PresenceConfig, show_artwork: bool = True) -> None:
         self._client_id = client_id
         self._presence = presence
+        self._artwork = ArtworkResolver(enabled=show_artwork)
         self._rpc: Presence | None = None
         self._connected = False
         self._last_track_key: tuple[str, str, str, str] | None = None
@@ -115,9 +117,13 @@ class DiscordStatus:
         payload: dict[str, Any] = {
             "details": track.title,
             "state": track.artist,
-            "large_text": self._presence.large_text,
+            "large_text": track.album or self._presence.large_text,
             "activity_type": activity_type,
         }
+
+        art_url = self._artwork.resolve(track)
+        if art_url:
+            payload["large_image"] = art_url
 
         if (
             track.playing

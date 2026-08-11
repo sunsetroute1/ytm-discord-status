@@ -4,6 +4,7 @@
   "clear_on_pause": true,
   "reconnect_interval_seconds": 15,
   "display_mode": "override",
+  "show_artwork": true,
   "supported_apps": [
     "chrome",
     "msedge",

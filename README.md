@@ -50,6 +50,7 @@ python -m ytm_discord
 - Polls Windows **System Media Transport Controls** for browser/YTM sessions  
 - Updates Discord via **Rich Presence** IPC (`pypresence`)  
 - Clears presence when playback stops (configurable)
+- Pushes album art from the media session (hosted for Discord; iTunes fallback)
 
 ## License
 

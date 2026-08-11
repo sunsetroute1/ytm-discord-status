@@ -37,7 +37,7 @@ def main() -> int:
         log.error("%s", exc)
         return 1
 
-    status = DiscordStatus(cfg.client_id, cfg.presence)
+    status = DiscordStatus(cfg.client_id, cfg.presence, show_artwork=cfg.show_artwork)
     poller = MediaPoller()
     running = True
 

@@ -39,6 +39,8 @@ def main() -> int:
         "--hidden-import=winrt.windows.media.control",
         "--hidden-import=winrt.windows.foundation",
         "--hidden-import=winrt.windows.foundation.collections",
+        "--hidden-import=winrt.windows.storage",
+        "--hidden-import=winrt.windows.storage.streams",
         "--collect-all",
         "winrt",
         str(ROOT / "scripts" / "run_entry.py"),

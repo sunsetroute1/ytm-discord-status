@@ -42,6 +42,7 @@ class AppConfig:
     # override  = Playing  (competes with the game for the primary activity line)
     # watching  = Watching (alternate priority between the two)
     display_mode: str = "override"
+    show_artwork: bool = True
     supported_apps: tuple[str, ...] = DEFAULT_SUPPORTED_APPS
     presence: PresenceConfig = field(default_factory=PresenceConfig)
 
@@ -73,6 +74,7 @@ class AppConfig:
             clear_on_pause=bool(data.get("clear_on_pause", True)),
             reconnect_interval_seconds=float(data.get("reconnect_interval_seconds", 15)),
             display_mode=display_mode,
+            show_artwork=bool(data.get("show_artwork", True)),
             supported_apps=tuple(
                 str(a).lower().strip() for a in supported if str(a).strip()
             ),

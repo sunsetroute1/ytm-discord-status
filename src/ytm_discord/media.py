@@ -25,6 +25,7 @@ class NowPlaying:
     playing: bool
     position_seconds: float | None = None
     duration_seconds: float | None = None
+    artwork_png: bytes | None = None
 
     @property
     def track_key(self) -> tuple[str, str, str]:
@@ -48,6 +49,31 @@ def _matches_supported_app(app_id: str, supported_apps: Iterable[str]) -> bool:
 def _session_id(session) -> str:
     app = getattr(session, "source_app_user_model_id", None) or ""
     return f"{app}:{id(session)}"
+
+
+async def _read_artwork_png(props) -> bytes | None:
+    try:
+        thumb = props.thumbnail
+    except Exception:  # noqa: BLE001
+        return None
+    if thumb is None:
+        return None
+    try:
+        from winrt.windows.storage.streams import Buffer, InputStreamOptions
+
+        stream = await thumb.open_read_async()
+        size = int(stream.size)
+        if size <= 0 or size > 5_000_000:
+            return None
+        buf = Buffer(size)
+        await stream.read_async(buf, size, InputStreamOptions.NONE)
+        data = bytes(buf)
+        if len(data) < 32:
+            return None
+        return data
+    except Exception as exc:  # noqa: BLE001
+        log.debug("Artwork thumbnail read failed: %s", exc)
+        return None
 
 
 async def _read_session(session, supported_apps: Iterable[str]) -> NowPlaying | None:
@@ -106,6 +132,8 @@ async def _read_session(session, supported_apps: Iterable[str]) -> NowPlaying | 
         position_seconds = None
         duration_seconds = None
 
+    artwork_png = await _read_artwork_png(props)
+
     return NowPlaying(
         title=title,
         artist=artist,
@@ -114,6 +142,7 @@ async def _read_session(session, supported_apps: Iterable[str]) -> NowPlaying | 
         playing=playing,
         position_seconds=position_seconds,
         duration_seconds=duration_seconds,
+        artwork_png=artwork_png,
     )
 
 
