@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import atexit
-import ctypes
 import logging
 import signal
 import sys
@@ -11,9 +9,8 @@ from pathlib import Path
 
 from .config import config_path, load_config, user_data_dir
 from .discord_rpc import DiscordStatus
+from .instance import SingleInstance
 from .media import MediaPoller
-
-_MUTEX_HANDLE = None
 
 
 def _setup_logging() -> Path:
@@ -44,7 +41,6 @@ def _setup_logging() -> Path:
     file_handler.setFormatter(formatter)
     root.addHandler(file_handler)
 
-    # Keep console output when launched interactively; silent under --noconsole.
     if sys.stdout and hasattr(sys.stdout, "write"):
         try:
             stream_handler = logging.StreamHandler(sys.stdout)
@@ -56,35 +52,12 @@ def _setup_logging() -> Path:
     return log_path
 
 
-def _acquire_single_instance() -> bool:
-    """Prevent multiple hidden copies from stacking up."""
-    global _MUTEX_HANDLE
-    if sys.platform != "win32":
-        return True
-    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
-    kernel32.SetLastError(0)
-    handle = kernel32.CreateMutexW(None, False, "Local\\ytm-discord-status-singleton")
-    if not handle:
-        return False
-    _MUTEX_HANDLE = handle
-    if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
-        return False
-
-    def _release() -> None:
-        try:
-            kernel32.CloseHandle(handle)
-        except Exception:  # noqa: BLE001
-            pass
-
-    atexit.register(_release)
-    return True
-
-
 def main() -> int:
     log_path = _setup_logging()
     log = logging.getLogger("ytm_discord")
 
-    if not _acquire_single_instance():
+    singleton = SingleInstance()
+    if not singleton.acquire():
         log.error("Another ytm-discord instance is already running")
         return 2
 
@@ -93,6 +66,7 @@ def main() -> int:
         cfg = load_config(cfg_file)
     except (FileNotFoundError, ValueError, OSError) as exc:
         log.error("%s", exc)
+        singleton.release()
         return 1
 
     status = DiscordStatus(
@@ -140,6 +114,7 @@ def main() -> int:
     finally:
         status.close()
         poller.close()
+        singleton.release()
         log.info("Stopped")
 
     return 0
