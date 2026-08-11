@@ -50,7 +50,8 @@ python -m ytm_discord
 - Polls Windows **System Media Transport Controls** for browser/YTM sessions  
 - Updates Discord via **Rich Presence** IPC (`pypresence`)  
 - Clears presence when playback stops (configurable)
-- Pushes album art from the media session (hosted for Discord; iTunes fallback)
+- Pushes album art from Deezer/iTunes CDNs (Discord-friendly). Optional `artwork_webhook` for exact media-session covers.
+- Runs **hidden** (no console). Logs: `%LOCALAPPDATA%\ytm-discord-status\ytm-discord.log`
 
 ## License
 

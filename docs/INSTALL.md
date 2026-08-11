@@ -60,7 +60,23 @@ python -m ytm_discord
 
 ---
 
-## Requirements while running
+## Hidden background mode
+
+The packaged exe is built with `--noconsole` (no terminal window).
+
+- Start: Start Menu → **YouTube Music Discord Status**
+- Stop: Start Menu → **Stop YouTube Music Discord Status**
+- Logs: `%LOCALAPPDATA%\ytm-discord-status\ytm-discord.log`
+
+From source without a console: double-click `run_hidden.vbs`.
+
+## Album art
+
+Discord shows `?` when it cannot fetch `large_image`. This app prefers **Deezer** then **iTunes** CDN URLs (those proxy cleanly). Catbox links are avoided because Discord often cannot load them.
+
+Optional: set `artwork_webhook` in config to a Discord channel webhook to host exact media-session covers on `cdn.discordapp.com`.
+
+You do **not** need to restart Discord for art/status changes — open your profile card (or Ctrl+R if the client UI looks stuck).
 
 - Discord **desktop** app open (not only browser)
 - music.youtube.com playing in Chrome / Edge / Brave / Firefox / Opera / Vivaldi

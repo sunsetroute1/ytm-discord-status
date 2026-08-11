@@ -43,6 +43,7 @@ class AppConfig:
     # watching  = Watching (alternate priority between the two)
     display_mode: str = "override"
     show_artwork: bool = True
+    artwork_webhook: str | None = None
     supported_apps: tuple[str, ...] = DEFAULT_SUPPORTED_APPS
     presence: PresenceConfig = field(default_factory=PresenceConfig)
 
@@ -68,6 +69,11 @@ class AppConfig:
                 f"display_mode must be one of: {', '.join(DISPLAY_MODES)}"
             )
 
+        webhook = data.get("artwork_webhook")
+        webhook_s = str(webhook).strip() if webhook else None
+        if webhook_s == "":
+            webhook_s = None
+
         return cls(
             client_id=str(data["client_id"]).strip(),
             poll_interval_seconds=float(data.get("poll_interval_seconds", 5)),
@@ -75,6 +81,7 @@ class AppConfig:
             reconnect_interval_seconds=float(data.get("reconnect_interval_seconds", 15)),
             display_mode=display_mode,
             show_artwork=bool(data.get("show_artwork", True)),
+            artwork_webhook=webhook_s,
             supported_apps=tuple(
                 str(a).lower().strip() for a in supported if str(a).strip()
             ),

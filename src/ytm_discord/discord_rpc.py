@@ -15,13 +15,20 @@ log = logging.getLogger(__name__)
 
 
 class DiscordStatus:
-    def __init__(self, client_id: str, presence: PresenceConfig, show_artwork: bool = True) -> None:
+    def __init__(
+        self,
+        client_id: str,
+        presence: PresenceConfig,
+        show_artwork: bool = True,
+        artwork_webhook: str | None = None,
+    ) -> None:
         self._client_id = client_id
         self._presence = presence
-        self._artwork = ArtworkResolver(enabled=show_artwork)
+        self._artwork = ArtworkResolver(enabled=show_artwork, webhook_url=artwork_webhook)
         self._rpc: Presence | None = None
         self._connected = False
         self._last_track_key: tuple[str, str, str, str] | None = None
+        self._last_art_url: str | None = None
         self._last_connect_attempt = 0.0
         self._had_presence = False
 
@@ -94,6 +101,7 @@ class DiscordStatus:
         try:
             self._rpc.clear()
             self._last_track_key = None
+            self._last_art_url = None
             self._had_presence = False
             log.info("Cleared Discord presence")
         except Exception as exc:  # noqa: BLE001
@@ -107,7 +115,14 @@ class DiscordStatus:
 
         activity_type = self._activity_type(cfg.display_mode)
         track_key = (*track.track_key, cfg.display_mode)
-        if track_key == self._last_track_key and self._connected:
+        art_url = self._artwork.resolve(track)
+
+        # Skip only when track AND artwork are unchanged (art can arrive after first poll).
+        if (
+            track_key == self._last_track_key
+            and art_url == self._last_art_url
+            and self._connected
+        ):
             return
 
         if not self.ensure_connected(cfg.reconnect_interval_seconds) or self._rpc is None:
@@ -121,7 +136,6 @@ class DiscordStatus:
             "activity_type": activity_type,
         }
 
-        art_url = self._artwork.resolve(track)
         if art_url:
             payload["large_image"] = art_url
 
@@ -141,14 +155,16 @@ class DiscordStatus:
         try:
             self._rpc.update(**payload)
             self._last_track_key = track_key
+            self._last_art_url = art_url
             self._had_presence = True
             status = "playing" if track.playing else "paused"
             log.info(
-                "Presence updated (%s/%s): %s - %s",
+                "Presence updated (%s/%s): %s - %s%s",
                 status,
                 cfg.display_mode,
                 track.artist,
                 track.title,
+                f" [art={art_url}]" if art_url else " [no art]",
             )
         except Exception as exc:  # noqa: BLE001
             log.warning("Failed to update presence: %s", exc)
@@ -169,6 +185,7 @@ class DiscordStatus:
         self._connected = False
         self._rpc = None
         self._last_track_key = None
+        self._last_art_url = None
 
     def _close_socket_quiet(self) -> None:
         if self._rpc is None:

@@ -1,13 +1,10 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Install YouTube Music -> Discord status updater for the current user.
+  Install YouTube Music -> Discord status updater (hidden background app).
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File .\install.ps1 -ClientId 1536877982222913626
-
-.EXAMPLE
-  powershell -ExecutionPolicy Bypass -File .\install.ps1 -Build
+  powershell -ExecutionPolicy Bypass -File .\install.ps1 -ClientId 1536877982222913626 -StartWithWindows -StartNow
 #>
 param(
   [string]$ClientId = "",
@@ -30,15 +27,18 @@ New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
 New-Item -ItemType Directory -Force -Path $StartMenu | Out-Null
 
+# Stop any running copies before replacing the exe.
+Get-Process ytm-discord -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 400
+
 $exeSource = Join-Path $Root "dist\ytm-discord.exe"
 if ($Build -or -not (Test-Path $exeSource)) {
-  Write-Step "Building standalone exe (first time can take a few minutes)..."
-  & "$Root\.venv\Scripts\python.exe" -m pip install -e . pyinstaller | Out-Null
-  if (-not $?) {
+  Write-Step "Building standalone hidden exe (first time can take a few minutes)..."
+  if (-not (Test-Path "$Root\.venv\Scripts\python.exe")) {
     python -m venv "$Root\.venv"
     & "$Root\.venv\Scripts\python.exe" -m pip install -U pip
-    & "$Root\.venv\Scripts\python.exe" -m pip install -e . pyinstaller
   }
+  & "$Root\.venv\Scripts\python.exe" -m pip install -e . pyinstaller | Out-Null
   & "$Root\.venv\Scripts\python.exe" "$Root\scripts\build_exe.py"
   if (-not (Test-Path $exeSource)) { throw "Build failed: $exeSource not found" }
 }
@@ -47,6 +47,7 @@ Write-Step "Copying files..."
 Copy-Item -Force $exeSource (Join-Path $InstallDir "ytm-discord.exe")
 Copy-Item -Force (Join-Path $Root "config.example.json") (Join-Path $InstallDir "config.example.json")
 Copy-Item -Force (Join-Path $Root "docs\INSTALL.md") (Join-Path $InstallDir "INSTALL.md")
+Copy-Item -Force (Join-Path $Root "scripts\stop.ps1") (Join-Path $InstallDir "stop.ps1")
 
 $configPath = Join-Path $DataDir "config.json"
 if (-not (Test-Path $configPath)) {
@@ -75,36 +76,29 @@ if (-not ($ClientId -match '^\d+$')) {
 
 $cfg = Get-Content $configPath -Raw | ConvertFrom-Json
 $cfg.client_id = $ClientId
-($cfg | ConvertTo-Json -Depth 5) + "`n" | Set-Content -Path $configPath -Encoding UTF8
+if (-not ($cfg.PSObject.Properties.Name -contains "show_artwork")) {
+  $cfg | Add-Member -NotePropertyName show_artwork -NotePropertyValue $true
+}
+($cfg | ConvertTo-Json -Depth 6) + "`n" | Set-Content -Path $configPath -Encoding UTF8
 
-# Launcher sets config env so the exe always finds AppData config.
-$launcher = Join-Path $InstallDir "Start YTM Discord Status.cmd"
-@"
-@echo off
-set "YTM_DISCORD_CONFIG=$configPath"
-start "" "$InstallDir\ytm-discord.exe"
-"@ | Set-Content -Path $launcher -Encoding ASCII
-
+# Direct shortcut to windowless exe (config is auto-discovered in %LOCALAPPDATA%\ytm-discord-status).
 $WshShell = New-Object -ComObject WScript.Shell
 $shortcutPath = Join-Path $StartMenu "YouTube Music Discord Status.lnk"
 $sc = $WshShell.CreateShortcut($shortcutPath)
-$sc.TargetPath = "$InstallDir\ytm-discord.exe"
+$sc.TargetPath = Join-Path $InstallDir "ytm-discord.exe"
 $sc.WorkingDirectory = $InstallDir
-$sc.WindowStyle = 1
-$sc.Description = "Push YouTube Music now-playing into Discord"
-$sc.Arguments = ""
-# Env var for shortcut: use the cmd launcher instead
-$sc.TargetPath = $launcher
+$sc.WindowStyle = 7  # Minimized; exe is built with --noconsole so no window appears
+$sc.Description = "Hidden YouTube Music -> Discord presence updater"
 $sc.Save()
 
-# Better: shortcut directly to exe with a tiny wrapper env via cmd /c
-$sc2 = $WshShell.CreateShortcut($shortcutPath)
-$sc2.TargetPath = "cmd.exe"
-$sc2.Arguments = "/c `"set YTM_DISCORD_CONFIG=$configPath&& `"$InstallDir\ytm-discord.exe`"`""
-$sc2.WorkingDirectory = $InstallDir
-$sc2.WindowStyle = 1
-$sc2.Description = "Push YouTube Music now-playing into Discord"
-$sc2.Save()
+$stopShortcut = Join-Path $StartMenu "Stop YouTube Music Discord Status.lnk"
+$scStop = $WshShell.CreateShortcut($stopShortcut)
+$scStop.TargetPath = "powershell.exe"
+$scStop.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$InstallDir\stop.ps1`""
+$scStop.WorkingDirectory = $InstallDir
+$scStop.WindowStyle = 7
+$scStop.Description = "Stop the hidden updater"
+$scStop.Save()
 
 if ($StartWithWindows) {
   Write-Step "Adding Startup entry..."
@@ -115,26 +109,28 @@ if ($StartWithWindows) {
 $uninstall = Join-Path $InstallDir "uninstall.ps1"
 @"
 `$ErrorActionPreference = 'Stop'
+Get-Process ytm-discord -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath '$shortcutPath' -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath '$stopShortcut' -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath (Join-Path `$env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup\YouTube Music Discord Status.lnk') -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath '$InstallDir' -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host 'Removed app files. Config left at $DataDir (delete manually if desired).'
+Write-Host 'Removed app files. Config/logs left at $DataDir (delete manually if desired).'
 "@ | Set-Content -Path $uninstall -Encoding UTF8
 
 Write-Host ""
-Write-Host "Installed." -ForegroundColor Green
+Write-Host "Installed (runs hidden - no console window)." -ForegroundColor Green
 Write-Host "  App:    $InstallDir"
 Write-Host "  Config: $configPath"
+Write-Host "  Logs:   $(Join-Path $DataDir 'ytm-discord.log')"
 Write-Host "  Start:  Start Menu -> YouTube Music Discord Status"
+Write-Host "  Stop:   Start Menu -> Stop YouTube Music Discord Status"
 Write-Host ""
-Write-Host "Where your status appears in Discord:" -ForegroundColor Yellow
-Write-Host "  1) User Settings -> Activity Privacy -> turn ON 'Display current activity as a status'"
-Write-Host "  2) Click your avatar (bottom-left) - the profile card shows Listening to YouTube Music"
-Write-Host "  3) Or check yourself in a server member list"
-Write-Host "  Note: this is NOT the Spotify green panel - that UI is Spotify-only."
+Write-Host "Album art uses Deezer/iTunes CDNs (Discord cannot proxy catbox reliably)." -ForegroundColor Yellow
+Write-Host "No Discord restart needed - just open your profile card after a track change."
 Write-Host ""
 
 if ($StartNow) {
-  Write-Step "Starting..."
-  Start-Process cmd.exe -ArgumentList "/c `"set YTM_DISCORD_CONFIG=$configPath&& `"$InstallDir\ytm-discord.exe`"`""
+  Write-Step "Starting hidden updater..."
+  $exePath = Join-Path $InstallDir "ytm-discord.exe"
+  Start-Process -FilePath $exePath -WorkingDirectory $InstallDir -WindowStyle Hidden
 }

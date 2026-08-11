@@ -32,7 +32,7 @@ def main() -> int:
         "--noconfirm",
         "--clean",
         "--onefile",
-        "--console",
+        "--noconsole",
         f"--name={NAME}",
         "--paths",
         str(ROOT / "src"),
