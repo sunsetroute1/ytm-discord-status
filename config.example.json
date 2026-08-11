@@ -1,0 +1,21 @@
+{
+  "client_id": "YOUR_DISCORD_APP_CLIENT_ID",
+  "poll_interval_seconds": 5,
+  "clear_on_pause": true,
+  "reconnect_interval_seconds": 15,
+  "supported_apps": [
+    "chrome",
+    "msedge",
+    "edge",
+    "brave",
+    "opera",
+    "firefox",
+    "chromium",
+    "vivaldi",
+    "youtube"
+  ],
+  "presence": {
+    "large_text": "YouTube Music",
+    "small_text": "music.youtube.com"
+  }
+}
