@@ -41,7 +41,7 @@ def main() -> int:
         "--hidden-import=winrt.windows.foundation.collections",
         "--collect-all",
         "winrt",
-        str(ROOT / "src" / "ytm_discord" / "__main__.py"),
+        str(ROOT / "scripts" / "run_entry.py"),
     ]
     subprocess.check_call(cmd, cwd=ROOT)
 
