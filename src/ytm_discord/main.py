@@ -86,17 +86,28 @@ def main() -> int:
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, _stop)
 
-    log.info("YouTube Music -> Discord status updater started (hidden-capable)")
+    log.info("Music -> Discord status updater started (whitelist-only)")
     log.info("Log file: %s", log_path)
     log.info("Config: %s", cfg_file)
-    log.info("Polling every %ss. Display mode: %s", cfg.poll_interval_seconds, cfg.display_mode)
+    entries = cfg.resolved_whitelist()
+    log.info(
+        "Polling every %ss. Display mode: %s. Whitelist: %s (browsers=%s catalog_gate=%s)",
+        cfg.poll_interval_seconds,
+        cfg.display_mode,
+        ", ".join(e.id for e in entries),
+        cfg.allow_browsers,
+        cfg.browser_require_catalog_match,
+    )
 
     had_track = False
 
     try:
         while running:
             try:
-                track = poller.get_now_playing(cfg.supported_apps)
+                track = poller.get_now_playing(
+                    entries,
+                    browser_require_catalog_match=cfg.browser_require_catalog_match,
+                )
                 if track is None:
                     if had_track:
                         status.clear()

@@ -7,29 +7,23 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-
-APP_NAME = "ytm-discord-status"
-DEFAULT_SUPPORTED_APPS = (
-    "chrome",
-    "msedge",
-    "edge",
-    "brave",
-    "opera",
-    "firefox",
-    "chromium",
-    "vivaldi",
-    "youtube",
+from .services import (
+    ALL_ENTRIES,
+    BROWSER_WHITELIST,
+    DEFAULT_ENABLED_IDS,
+    DEFAULT_WHITELIST,
+    resolve_whitelist,
 )
 
-# Discord hides Listening under detected games. Playing/Watching compete better
-# for the primary activity line; Listening still appears on the full profile.
+
+APP_NAME = "ytm-discord-status"
 DISPLAY_MODES = ("alongside", "override", "watching")
 
 
 @dataclass(frozen=True)
 class PresenceConfig:
-    large_text: str = "YouTube Music"
-    small_text: str = "music.youtube.com"
+    large_text: str = "Music"
+    small_text: str = ""
 
 
 @dataclass(frozen=True)
@@ -38,14 +32,24 @@ class AppConfig:
     poll_interval_seconds: float = 5.0
     clear_on_pause: bool = True
     reconnect_interval_seconds: float = 15.0
-    # alongside = Listening (shows with game on full profile, often hidden in compact UI)
-    # override  = Playing  (competes with the game for the primary activity line)
-    # watching  = Watching (alternate priority between the two)
     display_mode: str = "override"
     show_artwork: bool = True
     artwork_webhook: str | None = None
-    supported_apps: tuple[str, ...] = DEFAULT_SUPPORTED_APPS
+    # Whitelist-only: ids from services.DEFAULT_WHITELIST / BROWSER_WHITELIST.
+    whitelist: tuple[str, ...] = DEFAULT_ENABLED_IDS
+    # When True, also enable browser entries (Brave/Chrome/...). Browser hits
+    # still require catalog confirmation unless browser_require_catalog_match=False.
+    allow_browsers: bool = True
+    browser_require_catalog_match: bool = True
     presence: PresenceConfig = field(default_factory=PresenceConfig)
+
+    def resolved_whitelist(self):
+        ids = list(self.whitelist)
+        if self.allow_browsers:
+            for entry in BROWSER_WHITELIST:
+                if entry.id not in ids:
+                    ids.append(entry.id)
+        return resolve_whitelist(tuple(ids))
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AppConfig:
@@ -55,10 +59,6 @@ class AppConfig:
         presence_raw = data.get("presence") or {}
         if not isinstance(presence_raw, dict):
             raise ValueError("presence must be a JSON object")
-
-        supported = data.get("supported_apps", DEFAULT_SUPPORTED_APPS)
-        if not isinstance(supported, (list, tuple)) or not supported:
-            raise ValueError("supported_apps must be a non-empty list")
 
         if "client_id" not in data:
             raise ValueError("client_id is required")
@@ -74,6 +74,8 @@ class AppConfig:
         if webhook_s == "":
             webhook_s = None
 
+        whitelist = _parse_whitelist(data)
+
         return cls(
             client_id=str(data["client_id"]).strip(),
             poll_interval_seconds=float(data.get("poll_interval_seconds", 5)),
@@ -82,14 +84,58 @@ class AppConfig:
             display_mode=display_mode,
             show_artwork=bool(data.get("show_artwork", True)),
             artwork_webhook=webhook_s,
-            supported_apps=tuple(
-                str(a).lower().strip() for a in supported if str(a).strip()
+            whitelist=whitelist,
+            allow_browsers=bool(data.get("allow_browsers", True)),
+            browser_require_catalog_match=bool(
+                data.get("browser_require_catalog_match", True)
             ),
             presence=PresenceConfig(
-                large_text=str(presence_raw.get("large_text", "YouTube Music"))[:128],
-                small_text=str(presence_raw.get("small_text", "music.youtube.com"))[:128],
+                large_text=str(presence_raw.get("large_text", "Music"))[:128],
+                small_text=str(presence_raw.get("small_text", ""))[:128],
             ),
         )
+
+
+def _parse_whitelist(data: dict[str, Any]) -> tuple[str, ...]:
+    """Prefer `whitelist`; migrate legacy `supported_apps` if needed."""
+    if "whitelist" in data:
+        raw = data.get("whitelist") or []
+        if not isinstance(raw, (list, tuple)) or not raw:
+            raise ValueError("whitelist must be a non-empty list of service ids")
+        ids = tuple(str(x).lower().strip() for x in raw if str(x).strip())
+        unknown = [i for i in ids if i not in ALL_ENTRIES]
+        if unknown:
+            raise ValueError(
+                "Unknown whitelist ids: "
+                + ", ".join(unknown)
+                + ". Known: "
+                + ", ".join(sorted(ALL_ENTRIES))
+            )
+        return ids
+
+    # Legacy: supported_apps was a loose browser/app token list.
+    legacy = data.get("supported_apps")
+    if isinstance(legacy, (list, tuple)) and legacy:
+        mapped: list[str] = []
+        for token in legacy:
+            t = str(token).lower().strip()
+            if not t:
+                continue
+            if t in ALL_ENTRIES:
+                mapped.append(t)
+                continue
+            # Map old browser tokens → browser ids; music apps kept via defaults.
+            for entry in (*DEFAULT_WHITELIST, *BROWSER_WHITELIST):
+                if t in entry.tokens or t == entry.id:
+                    mapped.append(entry.id)
+                    break
+        # Always include dedicated music apps when migrating.
+        for eid in DEFAULT_ENABLED_IDS:
+            if eid not in mapped:
+                mapped.append(eid)
+        return tuple(dict.fromkeys(mapped))
+
+    return DEFAULT_ENABLED_IDS
 
 
 def is_frozen() -> bool:
@@ -170,8 +216,10 @@ def load_config(path: Path | None = None) -> AppConfig:
         raise ValueError("poll_interval_seconds must be >= 1")
     if cfg.reconnect_interval_seconds < 1:
         raise ValueError("reconnect_interval_seconds must be >= 1")
-    if not cfg.supported_apps:
-        raise ValueError("supported_apps must contain at least one entry")
+    if not cfg.whitelist:
+        raise ValueError("whitelist must contain at least one service id")
+    if not cfg.resolved_whitelist():
+        raise ValueError("whitelist resolved to no known services")
     return cfg
 
 
@@ -190,11 +238,10 @@ def ensure_user_config_from_example(client_id: str | None = None) -> Path:
             "poll_interval_seconds": 5,
             "clear_on_pause": True,
             "reconnect_interval_seconds": 15,
-            "supported_apps": list(DEFAULT_SUPPORTED_APPS),
-            "presence": {
-                "large_text": "YouTube Music",
-                "small_text": "music.youtube.com",
-            },
+            "whitelist": list(DEFAULT_ENABLED_IDS),
+            "allow_browsers": True,
+            "browser_require_catalog_match": True,
+            "presence": {"large_text": "Music", "small_text": ""},
         }
 
     if client_id:

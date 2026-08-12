@@ -60,7 +60,14 @@ python -m ytm_discord
 
 ---
 
-## Hidden background mode
+## Whitelist-only privacy
+
+Only apps on the whitelist are watched (Spotify, Deezer, Winamp, foobar2000, …).  
+Everything else is ignored.
+
+`allow_browsers: true` adds Brave/Chrome/etc., but `browser_require_catalog_match: true` (default) requires a Deezer/iTunes song match so personal/adult/random video tabs never become Discord presence.
+
+---
 
 The packaged exe is built with `--noconsole` (no terminal window).
 

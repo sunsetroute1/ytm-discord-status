@@ -27,7 +27,7 @@ class DiscordStatus:
         self._artwork = ArtworkResolver(enabled=show_artwork, webhook_url=artwork_webhook)
         self._rpc: Presence | None = None
         self._connected = False
-        self._last_track_key: tuple[str, str, str, str] | None = None
+        self._last_track_key: tuple[str, str, str, str, str] | None = None
         self._last_art_url: str | None = None
         self._last_connect_attempt = 0.0
         self._had_presence = False
@@ -128,13 +128,17 @@ class DiscordStatus:
         if not self.ensure_connected(cfg.reconnect_interval_seconds) or self._rpc is None:
             return
 
-        # details = song, state = artist
+        service_label = track.service_label or self._presence.large_text or "Music"
         payload: dict[str, Any] = {
             "details": track.title,
             "state": track.artist,
-            "large_text": track.album or self._presence.large_text,
+            "large_text": track.album or service_label,
             "activity_type": activity_type,
         }
+        if self._presence.small_text:
+            payload["small_text"] = self._presence.small_text
+        else:
+            payload["small_text"] = service_label
 
         if art_url:
             payload["large_image"] = art_url

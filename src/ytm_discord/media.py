@@ -11,6 +11,13 @@ from winrt.windows.media.control import (
     GlobalSystemMediaTransportControlsSessionPlaybackStatus as PlaybackStatus,
 )
 
+from .privacy import (
+    catalog_confirms_music,
+    contains_sensitive_media,
+    looks_like_video_site_metadata,
+)
+from .services import WhitelistEntry, match_whitelist
+
 log = logging.getLogger(__name__)
 
 _MAX_FIELD = 128
@@ -23,13 +30,15 @@ class NowPlaying:
     album: str
     app_id: str
     playing: bool
+    service_id: str = ""
+    service_label: str = "Music"
     position_seconds: float | None = None
     duration_seconds: float | None = None
     artwork_png: bytes | None = None
 
     @property
-    def track_key(self) -> tuple[str, str, str]:
-        return (self.title, self.artist, self.album)
+    def track_key(self) -> tuple[str, str, str, str]:
+        return (self.title, self.artist, self.album, self.service_id)
 
 
 def _clip(value: str) -> str:
@@ -37,13 +46,6 @@ def _clip(value: str) -> str:
     if len(value) <= _MAX_FIELD:
         return value
     return value[: _MAX_FIELD - 1].rstrip() + "…"
-
-
-def _matches_supported_app(app_id: str, supported_apps: Iterable[str]) -> bool:
-    needle = (app_id or "").lower()
-    if not needle:
-        return False
-    return any(token in needle for token in supported_apps)
 
 
 def _session_id(session) -> str:
@@ -76,14 +78,48 @@ async def _read_artwork_png(props) -> bytes | None:
         return None
 
 
-async def _read_session(session, supported_apps: Iterable[str]) -> NowPlaying | None:
+def _passes_privacy(
+    entry: WhitelistEntry,
+    title: str,
+    artist: str,
+    album: str,
+    app_id: str,
+    *,
+    browser_require_catalog_match: bool,
+) -> bool:
+    if contains_sensitive_media(title, artist, album, app_id, entry.label):
+        log.info("Blocked sensitive media metadata from %s", entry.id)
+        return False
+
+    if entry.is_browser:
+        if looks_like_video_site_metadata(title, artist, album):
+            log.info("Blocked video-site metadata from browser session (%s)", entry.id)
+            return False
+        if browser_require_catalog_match and not catalog_confirms_music(artist, title, album):
+            log.info(
+                "Ignored browser session (no music catalog match): %s - %s via %s",
+                artist,
+                title,
+                entry.id,
+            )
+            return False
+    return True
+
+
+async def _read_session(
+    session,
+    entries: list[WhitelistEntry],
+    *,
+    browser_require_catalog_match: bool,
+) -> NowPlaying | None:
     try:
         app_id = session.source_app_user_model_id or ""
     except Exception as exc:  # noqa: BLE001
         log.debug("Failed reading session app id: %s", exc)
         return None
 
-    if not _matches_supported_app(app_id, supported_apps):
+    entry = match_whitelist(app_id, entries)
+    if entry is None:
         return None
 
     try:
@@ -99,6 +135,16 @@ async def _read_session(session, supported_apps: Iterable[str]) -> NowPlaying | 
     artist = _clip((props.artist or "").strip())
     album = _clip((props.album_title or "").strip())
     if not title or not artist:
+        return None
+
+    if not _passes_privacy(
+        entry,
+        title,
+        artist,
+        album,
+        app_id,
+        browser_require_catalog_match=browser_require_catalog_match,
+    ):
         return None
 
     playing = False
@@ -140,14 +186,20 @@ async def _read_session(session, supported_apps: Iterable[str]) -> NowPlaying | 
         album=album,
         app_id=app_id,
         playing=playing,
+        service_id=entry.id,
+        service_label=entry.label if not entry.is_browser else "Music",
         position_seconds=position_seconds,
         duration_seconds=duration_seconds,
         artwork_png=artwork_png,
     )
 
 
-async def get_now_playing(supported_apps: Iterable[str]) -> NowPlaying | None:
-    """Return the best matching YouTube Music-like media session, if any."""
+async def get_now_playing(
+    entries: list[WhitelistEntry],
+    *,
+    browser_require_catalog_match: bool = True,
+) -> NowPlaying | None:
+    """Return the best whitelist-matched music session, if any."""
     manager = await MediaManager.request_async()
     try:
         sessions = list(manager.get_sessions())
@@ -177,7 +229,11 @@ async def get_now_playing(supported_apps: Iterable[str]) -> NowPlaying | None:
     paused_match: NowPlaying | None = None
 
     for session in ordered:
-        track = await _read_session(session, supported_apps)
+        track = await _read_session(
+            session,
+            entries,
+            browser_require_catalog_match=browser_require_catalog_match,
+        )
         if track is None:
             continue
         if track.playing and playing_match is None:
@@ -195,9 +251,19 @@ class MediaPoller:
         self._lock = threading.Lock()
         self._loop = asyncio.new_event_loop()
 
-    def get_now_playing(self, supported_apps: Iterable[str]) -> NowPlaying | None:
+    def get_now_playing(
+        self,
+        entries: list[WhitelistEntry],
+        *,
+        browser_require_catalog_match: bool = True,
+    ) -> NowPlaying | None:
         with self._lock:
-            return self._loop.run_until_complete(get_now_playing(supported_apps))
+            return self._loop.run_until_complete(
+                get_now_playing(
+                    entries,
+                    browser_require_catalog_match=browser_require_catalog_match,
+                )
+            )
 
     def close(self) -> None:
         with self._lock:
@@ -214,6 +280,14 @@ class MediaPoller:
             self._loop.close()
 
 
-def get_now_playing_sync(supported_apps: Iterable[str]) -> NowPlaying | None:
-    """One-shot helper (tests / scripts). Prefer MediaPoller in the service loop."""
-    return asyncio.run(get_now_playing(supported_apps))
+def get_now_playing_sync(
+    entries: Iterable[WhitelistEntry],
+    *,
+    browser_require_catalog_match: bool = True,
+) -> NowPlaying | None:
+    return asyncio.run(
+        get_now_playing(
+            list(entries),
+            browser_require_catalog_match=browser_require_catalog_match,
+        )
+    )

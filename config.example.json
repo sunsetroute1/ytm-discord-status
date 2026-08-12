@@ -6,19 +6,36 @@
   "display_mode": "override",
   "show_artwork": true,
   "artwork_webhook": null,
-  "supported_apps": [
-    "chrome",
-    "msedge",
-    "edge",
-    "brave",
-    "opera",
-    "firefox",
-    "chromium",
-    "vivaldi",
-    "youtube"
+  "whitelist": [
+    "spotify",
+    "apple_music",
+    "amazon_music",
+    "deezer",
+    "tidal",
+    "soundcloud",
+    "pandora",
+    "iheart",
+    "qobuz",
+    "napster",
+    "youtube_music_app",
+    "winamp",
+    "foobar2000",
+    "musicbee",
+    "aimp",
+    "itunes",
+    "mediamonkey",
+    "quodlibet",
+    "clementine",
+    "strawberry",
+    "rhythmbox",
+    "musicplayer2",
+    "dopamine",
+    "neutron"
   ],
+  "allow_browsers": true,
+  "browser_require_catalog_match": true,
   "presence": {
-    "large_text": "YouTube Music",
-    "small_text": "music.youtube.com"
+    "large_text": "Music",
+    "small_text": ""
   }
 }

@@ -1,34 +1,35 @@
-# YouTube Music → Discord status
+# Music → Discord status
 
-Windows app that reads the track playing on [music.youtube.com](https://music.youtube.com) and shows it on Discord as **Listening to YouTube Music**.
+Windows app that mirrors **whitelisted music apps only** into Discord Rich Presence.
+
+**Privacy model:** whitelist-only. Spotify, Deezer, Winamp, foobar2000, Apple Music, etc. are allowed. Everything else (browsers playing random/adult/personal video, VLC, Photos, …) is ignored unless you explicitly enable browsers — and even then a **music catalog match** is required.
 
 ## Where to see your status
 
-This is **not** the green Spotify bar in Discord’s bottom-left (that UI is Spotify-only).
-
-1. **User Settings → Activity Privacy → Display current activity as a status** = ON  
-2. Click **your avatar (bottom-left)** → profile card shows song + artist  
-3. Or check yourself in a server **member list**
-
-Name the Discord app **YouTube Music** so it reads correctly.
+Not the green Spotify bar. Click your avatar → profile card, or check a server member list.
 
 ### Playing a game at the same time
 
-Discord prioritizes detected games over **Listening**, so music can disappear from the compact status while you game.
+| `display_mode` | Behavior |
+|----------------|----------|
+| `override` (default) | **Playing** — competes with game status |
+| `alongside` | **Listening** — game stays primary |
+| `watching` | **Watching** |
 
-Set `display_mode` in `config.json`:
+## Whitelist
 
-| Mode | Behavior |
-|------|----------|
-| `override` (default) | Sends as **Playing** so music competes with the game for the primary activity line |
-| `alongside` | Sends as **Listening**; game stays primary; music still on your full profile |
-| `watching` | Sends as **Watching** (middle ground) |
+Default includes: Spotify, Apple Music, Amazon Music, Deezer, TIDAL, SoundCloud, Pandora, iHeart, Qobuz, Napster, YouTube Music (app/PWA), Winamp, foobar2000, MusicBee, AIMP, iTunes, MediaMonkey, and other local players.
 
-We cannot remove Discord’s game activity — both can exist; the client picks what to emphasize.
+```json
+"allow_browsers": true,
+"browser_require_catalog_match": true
+```
+
+Browsers (Brave/Chrome/…) stay off the music-app list unless `allow_browsers` is true. Browser sessions must match Deezer/iTunes as a real song, so porn / personal videos / random YouTube do not become presence.
 
 ## Install
 
-Full steps: [docs/INSTALL.md](docs/INSTALL.md)
+See [docs/INSTALL.md](docs/INSTALL.md).
 
 ```powershell
 python -m venv .venv
@@ -36,22 +37,6 @@ python -m venv .venv
 pip install -e .
 powershell -ExecutionPolicy Bypass -File .\install.ps1 -Build -ClientId YOUR_DISCORD_APP_ID -StartWithWindows -StartNow
 ```
-
-## Run from source
-
-```powershell
-copy config.example.json config.json
-# set client_id in config.json
-python -m ytm_discord
-```
-
-## How it works
-
-- Polls Windows **System Media Transport Controls** for browser/YTM sessions  
-- Updates Discord via **Rich Presence** IPC (`pypresence`)  
-- Clears presence when playback stops (configurable)
-- Pushes album art from Deezer/iTunes CDNs (Discord-friendly). Optional `artwork_webhook` for exact media-session covers.
-- Runs **hidden** (no console). Logs: `%LOCALAPPDATA%\ytm-discord-status\ytm-discord.log`
 
 ## License
 
