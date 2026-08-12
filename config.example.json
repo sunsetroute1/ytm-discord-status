@@ -36,7 +36,7 @@
   "browser_require_catalog_match": true,
   "listen_button": {
     "enabled": true,
-    "label": "Listen on YouTube Music",
+    "label": "Listen along",
     "target": "youtube_music"
   },
   "presence": {

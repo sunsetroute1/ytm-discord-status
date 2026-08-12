@@ -29,7 +29,7 @@ class PresenceConfig:
 @dataclass(frozen=True)
 class ListenButtonConfig:
     enabled: bool = True
-    label: str = "Listen on YouTube Music"
+    label: str = "Listen along"
     # youtube_music | deezer | spotify (search URLs — not synced listen-along)
     target: str = "youtube_music"
 
@@ -88,7 +88,7 @@ class AppConfig:
         listen_target = str(listen_raw.get("target", "youtube_music")).strip().lower()
         if listen_target not in {"youtube_music", "deezer", "spotify"}:
             raise ValueError("listen_button.target must be youtube_music, deezer, or spotify")
-        listen_label = str(listen_raw.get("label", "Listen on YouTube Music")).strip()[:32]
+        listen_label = str(listen_raw.get("label", "Listen along")).strip()[:32]
         if not listen_label:
             listen_label = "Listen along"
 

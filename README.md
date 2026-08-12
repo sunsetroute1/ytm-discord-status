@@ -29,12 +29,12 @@ Browsers (Brave/Chrome/…) stay off the music-app list unless `allow_browsers` 
 
 ## Listen button
 
-Friends can click **Listen on YouTube Music** on your activity (or the album art link) to open a search for the track. Not a synced listen-along — just a one-click jump to the song.
+Friends can click **Listen along** on your activity to open the track on YouTube Music. The button shows a short label only (not the raw search URL).
 
 ```json
 "listen_button": {
   "enabled": true,
-  "label": "Listen on YouTube Music",
+  "label": "Listen along",
   "target": "youtube_music"
 }
 ```

@@ -149,8 +149,7 @@ class DiscordStatus:
             payload["buttons"] = [
                 {"label": cfg.listen_button.label[:32], "url": url}
             ]
-            # Album art click opens the same link (others see this; not always on your own card).
-            payload["large_url"] = url
+            # Do not set large_url — Discord surfaces that raw URL on the card.
 
         if (
             track.playing
