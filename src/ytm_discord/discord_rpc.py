@@ -149,7 +149,8 @@ class DiscordStatus:
             payload["buttons"] = [
                 {"label": cfg.listen_button.label[:32], "url": url}
             ]
-            # Do not set large_url — Discord surfaces that raw URL on the card.
+            # Album art click — this is what worked before; do not remove.
+            payload["large_url"] = url
 
         if (
             track.playing
@@ -170,13 +171,15 @@ class DiscordStatus:
             self._last_art_url = art_url
             self._had_presence = True
             status = "playing" if track.playing else "paused"
+            listen = payload.get("large_url")
             log.info(
-                "Presence updated (%s/%s): %s - %s%s",
+                "Presence updated (%s/%s): %s - %s%s%s",
                 status,
                 cfg.display_mode,
                 track.artist,
                 track.title,
                 f" [art={art_url}]" if art_url else " [no art]",
+                f" [listen={listen}]" if listen else "",
             )
         except Exception as exc:  # noqa: BLE001
             log.warning("Failed to update presence: %s", exc)

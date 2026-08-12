@@ -10,6 +10,7 @@ import urllib.request
 
 from .config import user_data_dir
 from .media import NowPlaying
+from .privacy import clean_artist_for_match, clean_title_for_match
 
 log = logging.getLogger(__name__)
 
@@ -162,6 +163,8 @@ class ArtworkResolver:
             log.debug("Artwork cache save failed: %s", exc)
 
     def _deezer_lookup(self, artist: str, title: str, album: str) -> str | None:
+        artist = clean_artist_for_match(artist)
+        title = clean_title_for_match(title)
         queries = [f"{artist} {title}", f"{artist} {album}" if album else "", title]
         for query in queries:
             query = " ".join(query.split())
@@ -189,6 +192,8 @@ class ArtworkResolver:
         return None
 
     def _itunes_lookup(self, artist: str, title: str, album: str) -> str | None:
+        artist = clean_artist_for_match(artist)
+        title = clean_title_for_match(title)
         queries = [f"{artist} {title}", f"{artist} {album}" if album else "", title]
         for query in queries:
             query = " ".join(query.split())
