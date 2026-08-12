@@ -7,6 +7,11 @@ def test_catalog_confirms_known_song() -> None:
     assert catalog_confirms_music("Daft Punk", "Get Lucky") is True
 
 
+def test_catalog_confirms_short_title_with_feat() -> None:
+    # SMTC often omits "(feat. …)" that catalogs include.
+    assert catalog_confirms_music("Kid Ink", "Party") is True
+
+
 def test_catalog_rejects_nonsense() -> None:
     assert (
         catalog_confirms_music(

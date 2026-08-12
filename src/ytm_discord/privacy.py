@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 import urllib.parse
 import urllib.request
 from difflib import SequenceMatcher
@@ -49,11 +50,27 @@ VIDEO_SITE_MARKERS = (
     "dailymotion",
 )
 
+# Cache catalog decisions so we don't hammer APIs / spam logs every poll.
+_CATALOG_CACHE: dict[str, tuple[float, bool]] = {}
+_CATALOG_TTL_SECONDS = 30 * 60
+
 
 def _norm(text: str) -> str:
     text = (text or "").lower()
     text = re.sub(r"[^\w\s]", " ", text, flags=re.UNICODE)
     return " ".join(text.split())
+
+
+def _strip_features(title: str) -> str:
+    """Remove (feat. X) / [ft. X] clutter that tanks similarity for short titles."""
+    cleaned = re.sub(
+        r"\s*[\(\[][^)\]]*\b(feat\.?|ft\.?|featuring|with|prod\.?)\b[^)\]]*[\)\]]",
+        "",
+        title or "",
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"\s*-\s*(feat\.?|ft\.?|featuring)\b.*$", "", cleaned, flags=re.IGNORECASE)
+    return cleaned.strip(" -–—")
 
 
 def contains_sensitive_media(*parts: str) -> bool:
@@ -83,6 +100,33 @@ def _similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, _norm(a), _norm(b)).ratio()
 
 
+def _titles_match(left: str, right: str) -> bool:
+    if _similarity(left, right) >= 0.52:
+        return True
+    a = _norm(_strip_features(left))
+    b = _norm(_strip_features(right))
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    if _similarity(a, b) >= 0.52:
+        return True
+    # "party" vs "party feat rmr" after strip, or still-prefixed catalog titles
+    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+    if len(shorter) >= 3 and (longer == shorter or longer.startswith(shorter + " ")):
+        return True
+    return False
+
+
+def _artists_match(left: str, right: str) -> bool:
+    if _similarity(left, right) >= 0.45:
+        return True
+    a, b = _norm(left), _norm(right)
+    if not a or not b:
+        return False
+    return a in b or b in a
+
+
 def _http_get_json(url: str, timeout: float = 12.0) -> dict:
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -96,12 +140,38 @@ def catalog_confirms_music(artist: str, title: str, album: str = "") -> bool:
     if not artist or not title:
         return False
 
+    cache_key = f"{artist.lower()}|{title.lower()}|{album.lower()}"
+    now = time.monotonic()
+    cached = _CATALOG_CACHE.get(cache_key)
+    if cached and (now - cached[0]) < _CATALOG_TTL_SECONDS:
+        return cached[1]
+
+    ok = False
     for query in (f"{artist} {title}", f"{artist} {album}" if album else ""):
         query = " ".join(query.split())
         if not query:
             continue
         if _deezer_confirms(query, artist, title) or _itunes_confirms(query, artist, title):
-            return True
+            ok = True
+            break
+
+    _CATALOG_CACHE[cache_key] = (now, ok)
+    # Bound cache size
+    if len(_CATALOG_CACHE) > 500:
+        oldest = sorted(_CATALOG_CACHE.items(), key=lambda kv: kv[1][0])[:100]
+        for key, _ in oldest:
+            _CATALOG_CACHE.pop(key, None)
+    return ok
+
+
+def _result_matches(artist: str, title: str, result_artist: str, result_title: str) -> bool:
+    if _artists_match(artist, result_artist) and _titles_match(title, result_title):
+        return True
+    # Strong title alone with soft artist containment
+    if _titles_match(title, result_title) and (
+        _norm(artist) in _norm(result_artist) or _norm(result_artist) in _norm(artist)
+    ):
+        return True
     return False
 
 
@@ -115,11 +185,7 @@ def _deezer_confirms(query: str, artist: str, title: str) -> bool:
     for item in payload.get("data") or []:
         rt = str(item.get("title") or "")
         ra = str((item.get("artist") or {}).get("name") or "")
-        if _similarity(title, rt) >= 0.55 and _similarity(artist, ra) >= 0.45:
-            return True
-        if _similarity(title, rt) >= 0.72 and (
-            _norm(artist) in _norm(ra) or _norm(ra) in _norm(artist)
-        ):
+        if _result_matches(artist, title, ra, rt):
             return True
     return False
 
@@ -136,10 +202,6 @@ def _itunes_confirms(query: str, artist: str, title: str) -> bool:
     for item in payload.get("results") or []:
         rt = str(item.get("trackName") or "")
         ra = str(item.get("artistName") or "")
-        if _similarity(title, rt) >= 0.55 and _similarity(artist, ra) >= 0.45:
-            return True
-        if _similarity(title, rt) >= 0.72 and (
-            _norm(artist) in _norm(ra) or _norm(ra) in _norm(artist)
-        ):
+        if _result_matches(artist, title, ra, rt):
             return True
     return False
