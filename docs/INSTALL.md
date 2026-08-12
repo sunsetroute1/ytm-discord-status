@@ -34,10 +34,12 @@ Discord prioritizes game detection over Listening activities. Use `display_mode`
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e .
-powershell -ExecutionPolicy Bypass -File .\install.ps1 -Build -ClientId YOUR_APP_ID -StartWithWindows -StartNow
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Build -ClientId YOUR_APP_ID -StartNow
 ```
 
 Replace `YOUR_APP_ID` with your Discord Application ID.
+
+By default this registers a **logon watchdog** that starts the updater whenever Discord desktop is running (survives reboot). Pass `-NoAutoStart` to skip that.
 
 ### Option B — run from source (dev)
 
@@ -73,7 +75,8 @@ The packaged exe is built with `--noconsole` (no terminal window).
 
 - Start: Start Menu → **YouTube Music Discord Status**
 - Stop: Start Menu → **Stop YouTube Music Discord Status**
-- Logs: `%LOCALAPPDATA%\ytm-discord-status\ytm-discord.log`
+- Auto-start: after login, a watchdog starts the updater when **Discord** is open (Task Scheduler: `ytm-discord-status-watchdog`)
+- Logs: `%LOCALAPPDATA%\ytm-discord-status\ytm-discord.log` (watchdog: `watchdog.log`)
 
 From source without a console: double-click `run_hidden.vbs`.
 

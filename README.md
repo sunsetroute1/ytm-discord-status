@@ -49,7 +49,7 @@ See [docs/INSTALL.md](docs/INSTALL.md).
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e .
-powershell -ExecutionPolicy Bypass -File .\install.ps1 -Build -ClientId YOUR_DISCORD_APP_ID -StartWithWindows -StartNow
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Build -ClientId YOUR_DISCORD_APP_ID -StartNow
 ```
 
 ## License
