@@ -27,6 +27,20 @@ Default includes: Spotify, Apple Music, Amazon Music, Deezer, TIDAL, SoundCloud,
 
 Browsers (Brave/Chrome/…) stay off the music-app list unless `allow_browsers` is true. Browser sessions must match Deezer/iTunes as a real song, so porn / personal videos / random YouTube do not become presence.
 
+## Listen button
+
+Friends can click **Listen on YouTube Music** on your activity (or the album art link) to open a search for the track. Not a synced listen-along — just a one-click jump to the song.
+
+```json
+"listen_button": {
+  "enabled": true,
+  "label": "Listen on YouTube Music",
+  "target": "youtube_music"
+}
+```
+
+`target` can be `youtube_music`, `deezer`, or `spotify`. Discord often hides buttons on *your own* profile; others still see them.
+
 ## Install
 
 See [docs/INSTALL.md](docs/INSTALL.md).

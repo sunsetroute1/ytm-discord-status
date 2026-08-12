@@ -9,6 +9,7 @@ from pypresence.exceptions import DiscordNotFound, InvalidID, InvalidPipe
 
 from .artwork import ArtworkResolver
 from .config import AppConfig, PresenceConfig
+from .listen_link import listen_url
 from .media import NowPlaying
 
 log = logging.getLogger(__name__)
@@ -142,6 +143,14 @@ class DiscordStatus:
 
         if art_url:
             payload["large_image"] = art_url
+
+        if cfg.listen_button.enabled:
+            url = listen_url(track, cfg.listen_button.target)
+            payload["buttons"] = [
+                {"label": cfg.listen_button.label[:32], "url": url}
+            ]
+            # Album art click opens the same link (others see this; not always on your own card).
+            payload["large_url"] = url
 
         if (
             track.playing

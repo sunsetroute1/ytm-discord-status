@@ -27,6 +27,14 @@ class PresenceConfig:
 
 
 @dataclass(frozen=True)
+class ListenButtonConfig:
+    enabled: bool = True
+    label: str = "Listen on YouTube Music"
+    # youtube_music | deezer | spotify (search URLs — not synced listen-along)
+    target: str = "youtube_music"
+
+
+@dataclass(frozen=True)
 class AppConfig:
     client_id: str
     poll_interval_seconds: float = 5.0
@@ -35,12 +43,10 @@ class AppConfig:
     display_mode: str = "override"
     show_artwork: bool = True
     artwork_webhook: str | None = None
-    # Whitelist-only: ids from services.DEFAULT_WHITELIST / BROWSER_WHITELIST.
     whitelist: tuple[str, ...] = DEFAULT_ENABLED_IDS
-    # When True, also enable browser entries (Brave/Chrome/...). Browser hits
-    # still require catalog confirmation unless browser_require_catalog_match=False.
     allow_browsers: bool = True
     browser_require_catalog_match: bool = True
+    listen_button: ListenButtonConfig = field(default_factory=ListenButtonConfig)
     presence: PresenceConfig = field(default_factory=PresenceConfig)
 
     def resolved_whitelist(self):
@@ -74,6 +80,18 @@ class AppConfig:
         if webhook_s == "":
             webhook_s = None
 
+        listen_raw = data.get("listen_button") or {}
+        if listen_raw is None:
+            listen_raw = {}
+        if not isinstance(listen_raw, dict):
+            raise ValueError("listen_button must be a JSON object")
+        listen_target = str(listen_raw.get("target", "youtube_music")).strip().lower()
+        if listen_target not in {"youtube_music", "deezer", "spotify"}:
+            raise ValueError("listen_button.target must be youtube_music, deezer, or spotify")
+        listen_label = str(listen_raw.get("label", "Listen on YouTube Music")).strip()[:32]
+        if not listen_label:
+            listen_label = "Listen along"
+
         whitelist = _parse_whitelist(data)
 
         return cls(
@@ -88,6 +106,11 @@ class AppConfig:
             allow_browsers=bool(data.get("allow_browsers", True)),
             browser_require_catalog_match=bool(
                 data.get("browser_require_catalog_match", True)
+            ),
+            listen_button=ListenButtonConfig(
+                enabled=bool(listen_raw.get("enabled", True)),
+                label=listen_label,
+                target=listen_target,
             ),
             presence=PresenceConfig(
                 large_text=str(presence_raw.get("large_text", "Music"))[:128],

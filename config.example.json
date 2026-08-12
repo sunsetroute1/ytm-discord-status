@@ -34,6 +34,11 @@
   ],
   "allow_browsers": true,
   "browser_require_catalog_match": true,
+  "listen_button": {
+    "enabled": true,
+    "label": "Listen on YouTube Music",
+    "target": "youtube_music"
+  },
   "presence": {
     "large_text": "Music",
     "small_text": ""
