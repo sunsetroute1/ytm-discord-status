@@ -27,6 +27,8 @@ Default includes: Spotify, Apple Music, Amazon Music, Deezer, TIDAL, SoundCloud,
 
 Browsers (Brave/Chrome/…) stay off the music-app list unless `allow_browsers` is true. Browser sessions must match Deezer/iTunes as a real song, so porn / personal videos / random YouTube do not become presence.
 
+YouTube Music in a browser often reports a **playlist/channel name** as the artist and `Real Artist - Song` as the title. The catalog gate unwraps that pattern so legitimate tracks still show, without relaxing the privacy check.
+
 ## Listen along
 
 Friends get a **Listen along** button, and clicking the **album art** opens the track on YouTube Music (search link).

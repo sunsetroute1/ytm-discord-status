@@ -69,6 +69,8 @@ Everything else is ignored.
 
 `allow_browsers: true` adds Brave/Chrome/etc., but `browser_require_catalog_match: true` (default) requires a Deezer/iTunes song match so personal/adult/random video tabs never become Discord presence.
 
+YouTube Music browser sessions often put a playlist/channel in the artist field and `Artist - Song` in the title. The updater unwraps that for catalog matching so real tracks still work.
+
 ---
 
 The packaged exe is built with `--noconsole` (no terminal window).

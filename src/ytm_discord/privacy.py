@@ -211,15 +211,7 @@ def catalog_confirms_music(artist: str, title: str, album: str = "") -> bool:
 
     ok = False
     api_reachable = False
-    queries = [
-        f"{artist} {title}",
-        f"{artist} {album}" if album else "",
-        title,  # label/channel often stuffed into artist; title alone still matches catalogs
-    ]
-    for query in queries:
-        query = " ".join(query.split())
-        if not query:
-            continue
+    for query in _catalog_queries(artist, title, album):
         deezer = _deezer_confirms(query, artist, title)
         if deezer is not None:
             api_reachable = True
@@ -248,6 +240,95 @@ def catalog_confirms_music(artist: str, title: str, album: str = "") -> bool:
     return ok
 
 
+_MAX_CATALOG_QUERIES = 8
+
+# Title fragments that are almost never a real artist when left of " - ".
+_NON_ARTIST_TITLE_LEFT = re.compile(
+    r"^(?:"
+    r"official(?:\s+(?:music\s+)?video|\s+audio)?|"
+    r"lyrics?(?:\s+video)?|audio|visualizer|live|remix|bootleg|instrumental|"
+    r"radio\s+edit|extended(?:\s+mix)?|hq|hd|4k|8k|mv|pv|explicit|clean|"
+    r"remaster(?:ed)?|(?:\d{2,4}\s+)?remaster(?:ed)?"
+    r")$",
+    re.IGNORECASE,
+)
+
+
+def _catalog_queries(artist: str, title: str, album: str = "") -> list[str]:
+    """Build a short, de-duplicated catalog search list (channel/label-aware)."""
+    raw: list[str] = [
+        f"{artist} {title}",
+        f"{artist} {album}" if album else "",
+        title,  # label/channel often stuffed into artist
+    ]
+    for cand_artist, cand_title in _identity_candidates(artist, title)[1:]:
+        # Prefer the embedded real artist + song; skip channel+song-only noise.
+        if _norm(cand_artist) != _norm(artist):
+            raw.append(f"{cand_artist} {cand_title}")
+        raw.append(cand_title)
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for query in raw:
+        q = " ".join((query or "").split())
+        key = q.lower()
+        if not q or key in seen:
+            continue
+        seen.add(key)
+        out.append(q)
+        if len(out) >= _MAX_CATALOG_QUERIES:
+            break
+    return out
+
+
+def _embedded_artist_title(title: str) -> tuple[str, str] | None:
+    """Parse 'Real Artist - Song' from a browser/YTM title field, if present."""
+    # Strip Official Video / Remaster / etc. first so those never become a "song".
+    cleaned = clean_title_for_match(title)
+    if not cleaned:
+        return None
+    parts = re.split(r"\s+[-–—|]\s+", cleaned, maxsplit=1)
+    if len(parts) != 2:
+        return None
+    left, right = parts[0].strip(), parts[1].strip()
+    if len(left) < 2 or len(right) < 2:
+        return None
+    if not re.search(r"[^\W\d_]", left, flags=re.UNICODE):
+        return None
+    if not re.search(r"[^\W\d_]", right, flags=re.UNICODE):
+        return None
+    if _NON_ARTIST_TITLE_LEFT.match(left):
+        return None
+    if _NON_ARTIST_TITLE_LEFT.match(right):
+        return None
+    # Avoid "Song Title - Live at Venue" / long descriptive suffixes looking like songs.
+    if len(right) > 80:
+        return None
+    return left, right
+
+
+def _identity_candidates(artist: str, title: str) -> list[tuple[str, str]]:
+    """Browser/YTM often puts a channel in artist and 'Real Artist - Song' in title."""
+    pairs: list[tuple[str, str]] = [(artist, title)]
+    seen = {(_norm(artist), _norm(title))}
+
+    embedded = _embedded_artist_title(title)
+    if not embedded:
+        return pairs
+    left, right = embedded
+
+    # Only treat as channel/label mismatch when SMTC artist isn't already the left side.
+    if _artists_match(artist, left):
+        return pairs
+
+    for pair in ((left, right),):
+        key = (_norm(pair[0]), _norm(pair[1]))
+        if key[0] and key[1] and key not in seen:
+            seen.add(key)
+            pairs.append(pair)
+    return pairs
+
+
 def _result_matches(artist: str, title: str, result_artist: str, result_title: str) -> bool:
     if _artists_match(artist, result_artist) and _titles_match(title, result_title):
         return True
@@ -257,6 +338,22 @@ def _result_matches(artist: str, title: str, result_artist: str, result_title: s
         or _norm(clean_artist_for_match(result_artist)) in _norm(clean_artist_for_match(artist))
     ):
         return True
+    return False
+
+
+def _any_identity_matches(artist: str, title: str, result_artist: str, result_title: str) -> bool:
+    candidates = _identity_candidates(artist, title)
+    for cand_artist, cand_title in candidates:
+        if _result_matches(cand_artist, cand_title, result_artist, result_title):
+            return True
+    # Label/channel artist + unique title (never use a short embedded song alone).
+    if _exact_title_ok(title, result_title):
+        return True
+    # Embedded "Artist - Song": allow exact title only when catalog artist matches left.
+    if len(candidates) > 1:
+        emb_artist, emb_title = candidates[1]
+        if _exact_title_ok(emb_title, result_title) and _artists_match(emb_artist, result_artist):
+            return True
     return False
 
 
@@ -271,11 +368,7 @@ def _deezer_confirms(query: str, artist: str, title: str) -> bool | None:
     for item in payload.get("data") or []:
         rt = str(item.get("title") or "")
         ra = str((item.get("artist") or {}).get("name") or "")
-        if _result_matches(artist, title, ra, rt):
-            return True
-        # YTM often puts the label in artist (e.g. "ANTI- Records") while catalogs
-        # have the real performer. Allow unique-ish exact title matches.
-        if _exact_title_ok(title, rt):
+        if _any_identity_matches(artist, title, ra, rt):
             return True
     return False
 
@@ -293,9 +386,7 @@ def _itunes_confirms(query: str, artist: str, title: str) -> bool | None:
     for item in payload.get("results") or []:
         rt = str(item.get("trackName") or "")
         ra = str(item.get("artistName") or "")
-        if _result_matches(artist, title, ra, rt):
-            return True
-        if _exact_title_ok(title, rt):
+        if _any_identity_matches(artist, title, ra, rt):
             return True
     return False
 

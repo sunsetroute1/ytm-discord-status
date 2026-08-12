@@ -128,6 +128,13 @@ $cfg.client_id = $ClientId
 if (-not ($cfg.PSObject.Properties.Name -contains "show_artwork")) {
   $cfg | Add-Member -NotePropertyName show_artwork -NotePropertyValue $true
 }
+# Keep privacy defaults intact on upgrades (don't wipe user values if already set).
+if (-not ($cfg.PSObject.Properties.Name -contains "allow_browsers")) {
+  $cfg | Add-Member -NotePropertyName allow_browsers -NotePropertyValue $true
+}
+if (-not ($cfg.PSObject.Properties.Name -contains "browser_require_catalog_match")) {
+  $cfg | Add-Member -NotePropertyName browser_require_catalog_match -NotePropertyValue $true
+}
 ($cfg | ConvertTo-Json -Depth 6) + "`n" | Set-Content -Path $configPath -Encoding UTF8
 
 # Start Menu: start.ps1 clears pause flag, launches updater + Discord watchdog.
@@ -185,6 +192,7 @@ if ($EnableAutoStart -or $StartWithWindows) {
 }
 Write-Host ""
 Write-Host "Album art uses Deezer/iTunes CDNs (Discord cannot proxy catbox reliably)." -ForegroundColor Yellow
+Write-Host "Browser tracks need a Deezer/iTunes catalog match (handles YTM channel/playlist artist metadata)." -ForegroundColor Yellow
 Write-Host "No Discord restart needed - just open your profile card after a track change."
 Write-Host ""
 
