@@ -80,7 +80,7 @@ async def _read_artwork_png(props) -> bytes | None:
 
 
 def _looks_like_tv_or_movie(title: str, artist: str, album: str) -> bool:
-    """Heuristic for Jellyfin/etc. episode/movie metadata that should never be presence."""
+    """Heuristic used only for catalog-gated sources (browsers), not Jellyfin."""
     blob = f"{title} {artist} {album}"
     if re.search(r"\bS\d{1,2}\s*E\d{1,3}\b", blob, flags=re.IGNORECASE):
         return True

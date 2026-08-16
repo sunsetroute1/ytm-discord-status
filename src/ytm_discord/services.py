@@ -30,7 +30,7 @@ DEFAULT_WHITELIST: tuple[WhitelistEntry, ...] = (
     WhitelistEntry("qobuz", "Qobuz", ("qobuz",)),
     WhitelistEntry("napster", "Napster", ("napster",)),
     WhitelistEntry("youtube_music_app", "YouTube Music", ("youtubemusic", "youtube.music")),
-    # Self-hosted: music OK; movies/TV blocked via catalog match.
+    # Self-hosted media (music, films, TV — trusted app, not a browser tab).
     WhitelistEntry(
         "jellyfin",
         "Jellyfin",
@@ -41,7 +41,6 @@ DEFAULT_WHITELIST: tuple[WhitelistEntry, ...] = (
             "jellyfinmp",
             "jellyfin",
         ),
-        require_catalog_match=True,
     ),
     # Local / desktop players (music-focused)
     WhitelistEntry("winamp", "Winamp", ("winamp",)),

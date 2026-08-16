@@ -12,13 +12,9 @@ def test_tv_movie_heuristics() -> None:
     assert not _looks_like_tv_or_movie("Clear Day", "The Last Emperor", "Album")
 
 
-def test_jellyfin_blocks_episode_without_catalog(monkeypatch) -> None:
-    entry = WhitelistEntry(
-        "jellyfin",
-        "Jellyfin",
-        ("jellyfin",),
-        require_catalog_match=True,
-    )
+def test_jellyfin_allows_films_and_tv() -> None:
+    entry = WhitelistEntry("jellyfin", "Jellyfin", ("jellyfin",))
+    assert entry.require_catalog_match is False
     assert (
         _passes_privacy(
             entry,
@@ -28,20 +24,7 @@ def test_jellyfin_blocks_episode_without_catalog(monkeypatch) -> None:
             "JellyfinMediaPlayer.exe",
             browser_require_catalog_match=True,
         )
-        is False
-    )
-
-
-def test_jellyfin_allows_catalog_music(monkeypatch) -> None:
-    entry = WhitelistEntry(
-        "jellyfin",
-        "Jellyfin",
-        ("jellyfin",),
-        require_catalog_match=True,
-    )
-    monkeypatch.setattr(
-        "ytm_discord.media.catalog_confirms_music",
-        lambda *a, **k: True,
+        is True
     )
     assert (
         _passes_privacy(
@@ -53,4 +36,23 @@ def test_jellyfin_allows_catalog_music(monkeypatch) -> None:
             browser_require_catalog_match=True,
         )
         is True
+    )
+
+
+def test_catalog_gate_still_blocks_browser_episodes(monkeypatch) -> None:
+    entry = WhitelistEntry("brave", "Brave", ("brave",), is_browser=True)
+    monkeypatch.setattr(
+        "ytm_discord.media.catalog_confirms_music",
+        lambda *a, **k: False,
+    )
+    assert (
+        _passes_privacy(
+            entry,
+            "Pilot",
+            "Some Show",
+            "S01E01",
+            "brave.exe",
+            browser_require_catalog_match=True,
+        )
+        is False
     )

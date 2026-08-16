@@ -27,7 +27,7 @@ Default includes: Spotify, Apple Music, Amazon Music, Deezer, TIDAL, SoundCloud,
 
 Browsers (Brave/Chrome/…) stay off the music-app list unless `allow_browsers` is true. Browser sessions must match Deezer/iTunes as a real song, so porn / personal videos / random YouTube do not become presence.
 
-**Jellyfin** is whitelisted but also catalog-gated (and TV/movie episode patterns are ignored) so films/shows from your library do not become Discord presence — only tracks that look like real catalog music.
+**Jellyfin** (Media Player) is whitelisted for music, films, and TV from your library — no catalog gate. Browser tabs still require a music catalog match.
 
 YouTube Music in a browser often reports a **playlist/channel name** as the artist and `Real Artist - Song` as the title. The catalog gate unwraps that pattern so legitimate tracks still show, without relaxing the privacy check.
 

@@ -220,7 +220,7 @@ if ($EnableAutoStart -or $StartWithWindows) {
 }
 Write-Host ""
 Write-Host "Album art uses Deezer/iTunes CDNs (Discord cannot proxy catbox reliably)." -ForegroundColor Yellow
-Write-Host "Browser/Jellyfin tracks need a Deezer/iTunes catalog match (movies/TV ignored)." -ForegroundColor Yellow
+Write-Host "Browser tracks need a Deezer/iTunes catalog match; Jellyfin music/films/TV are allowed." -ForegroundColor Yellow
 Write-Host "No Discord restart needed - just open your profile card after a track change."
 Write-Host ""
 
