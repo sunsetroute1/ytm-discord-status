@@ -79,8 +79,11 @@ async def _read_artwork_png(props) -> bytes | None:
         return None
 
 
+_JELLYFIN_WEB_MIN_SECONDS = 10 * 60
+
+
 def _looks_like_tv_or_movie(title: str, artist: str, album: str) -> bool:
-    """Heuristic used only for catalog-gated sources (browsers), not Jellyfin."""
+    """Heuristic used only for catalog-gated browser music matching."""
     blob = f"{title} {artist} {album}"
     if re.search(r"\bS\d{1,2}\s*E\d{1,3}\b", blob, flags=re.IGNORECASE):
         return True
@@ -93,6 +96,21 @@ def _looks_like_tv_or_movie(title: str, artist: str, album: str) -> bool:
     return False
 
 
+def _looks_like_jellyfin_web_playback(
+    artist: str,
+    duration_seconds: float | None,
+) -> bool:
+    """
+    Jellyfin web in a browser often publishes title-only metadata for films/TV
+    (empty artist) with a long runtime. YouTube/etc. almost always set a channel.
+    """
+    if (artist or "").strip():
+        return False
+    if duration_seconds is None:
+        return False
+    return duration_seconds >= _JELLYFIN_WEB_MIN_SECONDS
+
+
 def _passes_privacy(
     entry: WhitelistEntry,
     title: str,
@@ -101,6 +119,8 @@ def _passes_privacy(
     app_id: str,
     *,
     browser_require_catalog_match: bool,
+    jellyfin_enabled: bool = False,
+    duration_seconds: float | None = None,
 ) -> bool:
     if contains_sensitive_media(title, artist, album, app_id, entry.label):
         log.info("Blocked sensitive media metadata from %s", entry.id)
@@ -109,6 +129,15 @@ def _passes_privacy(
     if entry.is_browser and looks_like_video_site_metadata(title, artist, album):
         log.info("Blocked video-site metadata from browser session (%s)", entry.id)
         return False
+
+    # Jellyfin web UI runs in a normal browser tab; trust long title-only sessions
+    # when Jellyfin itself is on the whitelist.
+    if (
+        entry.is_browser
+        and jellyfin_enabled
+        and _looks_like_jellyfin_web_playback(artist, duration_seconds)
+    ):
+        return True
 
     needs_catalog = entry.require_catalog_match or (
         entry.is_browser and browser_require_catalog_match
@@ -131,6 +160,32 @@ def _passes_privacy(
             )
             return False
     return True
+
+
+def _read_timeline(session) -> tuple[float | None, float | None]:
+    position_seconds: float | None = None
+    duration_seconds: float | None = None
+    try:
+        timeline = session.get_timeline_properties()
+        if timeline is None:
+            return None, None
+        position_seconds = max(0.0, float(timeline.position.total_seconds()))
+        end = float(timeline.end_time.total_seconds())
+        start = float(timeline.start_time.total_seconds())
+        if end > start:
+            duration_seconds = max(0.0, end - start)
+        if duration_seconds is not None and duration_seconds > 24 * 3600:
+            return None, None
+        if (
+            position_seconds is not None
+            and duration_seconds is not None
+            and position_seconds > duration_seconds + 2
+        ):
+            position_seconds = duration_seconds
+    except Exception as exc:  # noqa: BLE001
+        log.debug("Timeline read failed: %s", exc)
+        return None, None
+    return position_seconds, duration_seconds
 
 
 async def _read_session(
@@ -161,16 +216,36 @@ async def _read_session(
     title = _clip((props.title or "").strip())
     artist = _clip((props.artist or "").strip())
     album = _clip((props.album_title or "").strip())
-    if not title or not artist:
+    if not title:
         return None
+
+    jellyfin_enabled = any(e.id == "jellyfin" for e in entries)
+    position_seconds, duration_seconds = _read_timeline(session)
+
+    # Films/TV (Jellyfin web or desktop) often omit artist — keep a displayable value.
+    display_artist = artist
+    if not display_artist:
+        if album:
+            display_artist = album
+        elif entry.id == "jellyfin" or (
+            entry.is_browser
+            and jellyfin_enabled
+            and _looks_like_jellyfin_web_playback(artist, duration_seconds)
+        ):
+            display_artist = "Jellyfin"
+        else:
+            # Music apps / normal browser music still require an artist field.
+            return None
 
     if not _passes_privacy(
         entry,
         title,
-        artist,
+        artist,  # raw artist (may be empty) for jellyfin-web detection
         album,
         app_id,
         browser_require_catalog_match=browser_require_catalog_match,
+        jellyfin_enabled=jellyfin_enabled,
+        duration_seconds=duration_seconds,
     ):
         return None
 
@@ -181,40 +256,30 @@ async def _read_session(
     except Exception as exc:  # noqa: BLE001
         log.debug("Playback info failed for %s: %s", app_id, exc)
 
-    position_seconds: float | None = None
-    duration_seconds: float | None = None
-    try:
-        timeline = session.get_timeline_properties()
-        if timeline is not None:
-            position_seconds = max(0.0, float(timeline.position.total_seconds()))
-            end = float(timeline.end_time.total_seconds())
-            start = float(timeline.start_time.total_seconds())
-            if end > start:
-                duration_seconds = max(0.0, end - start)
-            if duration_seconds is not None and duration_seconds > 24 * 3600:
-                duration_seconds = None
-                position_seconds = None
-            elif (
-                position_seconds is not None
-                and duration_seconds is not None
-                and position_seconds > duration_seconds + 2
-            ):
-                position_seconds = duration_seconds
-    except Exception as exc:  # noqa: BLE001
-        log.debug("Timeline read failed for %s: %s", app_id, exc)
-        position_seconds = None
-        duration_seconds = None
-
     artwork_png = await _read_artwork_png(props)
+
+    if entry.id == "jellyfin" or (
+        entry.is_browser
+        and jellyfin_enabled
+        and _looks_like_jellyfin_web_playback(artist, duration_seconds)
+    ):
+        service_id = "jellyfin"
+        service_label = "Jellyfin"
+    elif entry.is_browser:
+        service_id = entry.id
+        service_label = "Music"
+    else:
+        service_id = entry.id
+        service_label = entry.label
 
     return NowPlaying(
         title=title,
-        artist=artist,
+        artist=display_artist,
         album=album,
         app_id=app_id,
         playing=playing,
-        service_id=entry.id,
-        service_label=entry.label if not entry.is_browser else "Music",
+        service_id=service_id,
+        service_label=service_label,
         position_seconds=position_seconds,
         duration_seconds=duration_seconds,
         artwork_png=artwork_png,

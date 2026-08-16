@@ -71,7 +71,7 @@ Everything else is ignored.
 
 YouTube Music browser sessions often put a playlist/channel in the artist field and `Artist - Song` in the title. The updater unwraps that for catalog matching so real tracks still work.
 
-**Jellyfin Media Player** is supported for music, films, and TV (trusted app — no catalog gate). Browser tabs still need a music catalog match.
+**Jellyfin** is supported for music/films/TV via Media Player or the web UI. Browser Jellyfin sessions are detected as title-only + long runtime; other browser tabs still need a music catalog match.
 
 The packaged exe is built with `--noconsole` (no terminal window) and launched with `CreateNoWindow` / a hidden WScript watchdog so nothing flashes on the taskbar.
 

@@ -27,7 +27,7 @@ Default includes: Spotify, Apple Music, Amazon Music, Deezer, TIDAL, SoundCloud,
 
 Browsers (Brave/Chrome/…) stay off the music-app list unless `allow_browsers` is true. Browser sessions must match Deezer/iTunes as a real song, so porn / personal videos / random YouTube do not become presence.
 
-**Jellyfin** (Media Player) is whitelisted for music, films, and TV from your library — no catalog gate. Browser tabs still require a music catalog match.
+**Jellyfin** is supported via Jellyfin Media Player and the **web UI in a browser**. Web films/TV usually publish title-only metadata with a long runtime; those are treated as Jellyfin when `jellyfin` is on the whitelist. Random YouTube tabs (channel as artist) still need a music catalog match.
 
 YouTube Music in a browser often reports a **playlist/channel name** as the artist and `Real Artist - Song` as the title. The catalog gate unwraps that pattern so legitimate tracks still show, without relaxing the privacy check.
 
