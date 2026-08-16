@@ -14,6 +14,7 @@ from .services import (
     DEFAULT_WHITELIST,
     resolve_whitelist,
 )
+from .jellyfin_meta import JellyfinConfig
 
 
 APP_NAME = "ytm-discord-status"
@@ -48,6 +49,7 @@ class AppConfig:
     browser_require_catalog_match: bool = True
     listen_button: ListenButtonConfig = field(default_factory=ListenButtonConfig)
     presence: PresenceConfig = field(default_factory=PresenceConfig)
+    jellyfin: JellyfinConfig = field(default_factory=JellyfinConfig)
 
     def resolved_whitelist(self):
         ids = list(self.whitelist)
@@ -93,6 +95,11 @@ class AppConfig:
             listen_label = "Listen along"
 
         whitelist = _parse_whitelist(data)
+        jelly_raw = data.get("jellyfin") or {}
+        if jelly_raw is None:
+            jelly_raw = {}
+        if not isinstance(jelly_raw, dict):
+            raise ValueError("jellyfin must be a JSON object")
 
         return cls(
             client_id=str(data["client_id"]).strip(),
@@ -115,6 +122,11 @@ class AppConfig:
             presence=PresenceConfig(
                 large_text=str(presence_raw.get("large_text", "Music"))[:128],
                 small_text=str(presence_raw.get("small_text", ""))[:128],
+            ),
+            jellyfin=JellyfinConfig(
+                base_url=str(jelly_raw.get("base_url", "") or "").strip(),
+                api_key=str(jelly_raw.get("api_key", "") or "").strip(),
+                client_id=str(jelly_raw.get("client_id", "") or "").strip(),
             ),
         )
 

@@ -85,10 +85,14 @@ class ArtworkResolver:
 
         url = None
         try:
-            # Prefer CDNs Discord reliably proxies.
-            url = self._deezer_lookup(track.artist, track.title, track.album)
-            if not url:
-                url = self._itunes_lookup(track.artist, track.title, track.album)
+            # Prefer pre-resolved art (TVMaze / Jellyfin API).
+            if track.artwork_url and _url_is_reachable_image(track.artwork_url):
+                url = track.artwork_url
+            # Music CDNs — skip for Jellyfin video (wrong "album" matches).
+            elif track.service_id != "jellyfin" or track.media_kind in {"music", "audio", ""}:
+                url = self._deezer_lookup(track.artist, track.title, track.album)
+                if not url:
+                    url = self._itunes_lookup(track.artist, track.title, track.album)
             # Exact cover from the media session, hosted where Discord can read it.
             if not url and track.artwork_png:
                 if self.webhook_url:
@@ -127,6 +131,7 @@ class ArtworkResolver:
                 "discordapp.com",
                 "discordapp.net",
                 "discord.com",
+                "tvmaze.com",
             )
         )
 

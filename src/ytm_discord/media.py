@@ -4,7 +4,7 @@ import asyncio
 import logging
 import re
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Iterable
 
 from winrt.windows.media.control import (
@@ -36,10 +36,28 @@ class NowPlaying:
     position_seconds: float | None = None
     duration_seconds: float | None = None
     artwork_png: bytes | None = None
+    # Jellyfin / video enrichment
+    media_kind: str = "music"  # music | episode | movie | video | audio
+    series_name: str = ""
+    season: int | None = None
+    episode: int | None = None
+    episode_code: str = ""  # S2E3
+    episode_name: str = ""
+    artwork_url: str | None = None
 
     @property
-    def track_key(self) -> tuple[str, str, str, str]:
-        return (self.title, self.artist, self.album, self.service_id)
+    def track_key(self) -> tuple[str, str, str, str, str, str]:
+        return (
+            self.title,
+            self.artist,
+            self.album,
+            self.service_id,
+            self.episode_code,
+            self.media_kind,
+        )
+
+    def replace(self, **kwargs: object) -> NowPlaying:
+        return replace(self, **kwargs)
 
 
 def _clip(value: str) -> str:

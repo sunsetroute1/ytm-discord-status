@@ -163,6 +163,13 @@ if ($cfg.PSObject.Properties.Name -contains "whitelist" -and $cfg.whitelist) {
   }
   $cfg.whitelist = $list
 }
+if (-not ($cfg.PSObject.Properties.Name -contains "jellyfin")) {
+  $cfg | Add-Member -NotePropertyName jellyfin -NotePropertyValue ([pscustomobject]@{
+    base_url = ""
+    api_key = ""
+    client_id = ""
+  })
+}
 ($cfg | ConvertTo-Json -Depth 6) + "`n" | Set-Content -Path $configPath -Encoding UTF8
 
 # Start Menu: start.ps1 clears pause flag, launches updater + Discord watchdog.

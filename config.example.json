@@ -40,6 +40,11 @@
     "label": "Listen along",
     "target": "youtube_music"
   },
+  "jellyfin": {
+    "base_url": "",
+    "api_key": "",
+    "client_id": ""
+  },
   "presence": {
     "large_text": "Music",
     "small_text": ""

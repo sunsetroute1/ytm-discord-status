@@ -74,6 +74,7 @@ def main() -> int:
         cfg.presence,
         show_artwork=cfg.show_artwork,
         artwork_webhook=cfg.artwork_webhook,
+        jellyfin=cfg.jellyfin,
     )
     poller = MediaPoller()
     running = True

@@ -27,7 +27,19 @@ Default includes: Spotify, Apple Music, Amazon Music, Deezer, TIDAL, SoundCloud,
 
 Browsers (Brave/Chrome/…) stay off the music-app list unless `allow_browsers` is true. Browser sessions must match Deezer/iTunes as a real song, so porn / personal videos / random YouTube do not become presence.
 
-**Jellyfin** is supported via Jellyfin Media Player and the **web UI in a browser**. Web films/TV usually publish title-only metadata with a long runtime; those are treated as Jellyfin when `jellyfin` is on the whitelist. Random YouTube tabs (channel as artist) still need a music catalog match.
+**Jellyfin** is supported via Jellyfin Media Player and the **web UI in a browser**. Presence shows as watching with show art (TVMaze). For real `S2E3` episode codes and Jellyfin posters, set:
+
+```json
+"jellyfin": {
+  "base_url": "https://your-jellyfin-host",
+  "api_key": "YOUR_API_KEY",
+  "client_id": ""
+}
+```
+
+Create the API key in Jellyfin → Dashboard → API Keys. Optional `client_id`: a second Discord Application **named Jellyfin** so the status header isn't your music app name (YouTube Music).
+
+Web films/TV are detected as title-only + long runtime when `jellyfin` is whitelisted. Random YouTube tabs (channel as artist) still need a music catalog match.
 
 YouTube Music in a browser often reports a **playlist/channel name** as the artist and `Real Artist - Song` as the title. The catalog gate unwraps that pattern so legitimate tracks still show, without relaxing the privacy check.
 

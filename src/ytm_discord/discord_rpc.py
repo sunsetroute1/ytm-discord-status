@@ -9,6 +9,7 @@ from pypresence.exceptions import DiscordNotFound, InvalidID, InvalidPipe
 
 from .artwork import ArtworkResolver
 from .config import AppConfig, PresenceConfig
+from .jellyfin_meta import JellyfinConfig, enrich_jellyfin_track
 from .listen_link import listen_url
 from .media import NowPlaying
 
@@ -22,19 +23,38 @@ class DiscordStatus:
         presence: PresenceConfig,
         show_artwork: bool = True,
         artwork_webhook: str | None = None,
+        jellyfin: JellyfinConfig | None = None,
     ) -> None:
-        self._client_id = client_id
+        self._music_client_id = client_id
+        self._jellyfin = jellyfin or JellyfinConfig()
+        self._jellyfin_client_id = (self._jellyfin.client_id or "").strip() or client_id
+        self._active_client_id = client_id
         self._presence = presence
         self._artwork = ArtworkResolver(enabled=show_artwork, webhook_url=artwork_webhook)
         self._rpc: Presence | None = None
         self._connected = False
-        self._last_track_key: tuple[str, str, str, str, str] | None = None
+        self._last_track_key: tuple | None = None
         self._last_art_url: str | None = None
         self._last_connect_attempt = 0.0
         self._had_presence = False
 
+    def _client_id_for(self, track: NowPlaying) -> str:
+        if track.service_id == "jellyfin" and track.media_kind in {
+            "episode",
+            "movie",
+            "video",
+        }:
+            return self._jellyfin_client_id
+        return self._music_client_id
+
     @staticmethod
-    def _activity_type(display_mode: str) -> ActivityType:
+    def _activity_type(display_mode: str, track: NowPlaying) -> ActivityType:
+        if track.service_id == "jellyfin" and track.media_kind in {
+            "episode",
+            "movie",
+            "video",
+        }:
+            return ActivityType.WATCHING
         if display_mode == "override":
             return ActivityType.PLAYING
         if display_mode == "watching":
@@ -45,8 +65,21 @@ class DiscordStatus:
     def connected(self) -> bool:
         return self._connected
 
-    def connect(self, force: bool = False, min_interval: float = 15.0) -> bool:
+    def connect(
+        self,
+        force: bool = False,
+        min_interval: float = 15.0,
+        client_id: str | None = None,
+    ) -> bool:
+        wanted = (client_id or self._active_client_id or self._music_client_id).strip()
         now = time.monotonic()
+        if (
+            not force
+            and self._connected
+            and self._rpc is not None
+            and self._active_client_id == wanted
+        ):
+            return True
         if (
             not force
             and self._last_connect_attempt
@@ -59,20 +92,21 @@ class DiscordStatus:
         self._close_socket_quiet()
 
         try:
-            rpc = Presence(self._client_id)
+            rpc = Presence(wanted)
             rpc.connect()
             self._rpc = rpc
             self._connected = True
+            self._active_client_id = wanted
             # Force a fresh presence push after reconnect.
             self._last_track_key = None
-            log.info("Connected to Discord IPC")
+            log.info("Connected to Discord IPC (app %s)", wanted)
             return True
         except InvalidID:
             self._rpc = None
             self._connected = False
             log.error(
                 "Discord rejected client_id %s. Check the Application ID in config.json.",
-                self._client_id,
+                wanted,
             )
             return False
         except (DiscordNotFound, InvalidPipe, FileNotFoundError, ConnectionError, OSError) as exc:
@@ -86,10 +120,13 @@ class DiscordStatus:
             log.warning("Failed to connect to Discord: %s", exc)
             return False
 
-    def ensure_connected(self, min_interval: float = 15.0) -> bool:
-        if self._connected and self._rpc is not None:
+    def ensure_connected(
+        self, min_interval: float = 15.0, client_id: str | None = None
+    ) -> bool:
+        wanted = (client_id or self._active_client_id or self._music_client_id).strip()
+        if self._connected and self._rpc is not None and self._active_client_id == wanted:
             return True
-        return self.connect(min_interval=min_interval)
+        return self.connect(min_interval=min_interval, client_id=wanted)
 
     def clear(self) -> None:
         if not self._had_presence and self._last_track_key is None:
@@ -110,46 +147,108 @@ class DiscordStatus:
             self._mark_disconnected()
 
     def update(self, track: NowPlaying, cfg: AppConfig) -> None:
+        if track.service_id == "jellyfin":
+            track = enrich_jellyfin_track(track, cfg.jellyfin)
+
         if not track.playing and cfg.clear_on_pause:
             self.clear()
             return
 
-        activity_type = self._activity_type(cfg.display_mode)
-        track_key = (*track.track_key, cfg.display_mode)
-        art_url = self._artwork.resolve(track)
+        activity_type = self._activity_type(cfg.display_mode, track)
+        track_key = (*track.track_key, cfg.display_mode, str(activity_type))
+        art_url = track.artwork_url or self._artwork.resolve(track)
 
         # Skip only when track AND artwork are unchanged (art can arrive after first poll).
         if (
             track_key == self._last_track_key
             and art_url == self._last_art_url
             and self._connected
+            and self._active_client_id == self._client_id_for(track)
         ):
             return
 
-        if not self.ensure_connected(cfg.reconnect_interval_seconds) or self._rpc is None:
+        if (
+            not self.ensure_connected(
+                cfg.reconnect_interval_seconds, client_id=self._client_id_for(track)
+            )
+            or self._rpc is None
+        ):
             return
 
-        service_label = track.service_label or self._presence.large_text or "Music"
-        payload: dict[str, Any] = {
-            "details": track.title,
-            "state": track.artist,
-            "large_text": track.album or service_label,
-            "activity_type": activity_type,
+        payload = self._build_payload(track, cfg, activity_type, art_url)
+
+        try:
+            self._rpc.update(**payload)
+            self._last_track_key = track_key
+            self._last_art_url = art_url
+            self._had_presence = True
+            status = "playing" if track.playing else "paused"
+            log.info(
+                "Presence updated (%s/%s): %s - %s%s",
+                status,
+                cfg.display_mode,
+                payload.get("state") or track.artist,
+                payload.get("details") or track.title,
+                f" [art={art_url}]" if art_url else " [no art]",
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Failed to update presence: %s", exc)
+            self._mark_disconnected()
+
+    def _build_payload(
+        self,
+        track: NowPlaying,
+        cfg: AppConfig,
+        activity_type: ActivityType,
+        art_url: str | None,
+    ) -> dict[str, Any]:
+        is_jelly_video = track.service_id == "jellyfin" and track.media_kind in {
+            "episode",
+            "movie",
+            "video",
         }
-        if self._presence.small_text:
-            payload["small_text"] = self._presence.small_text
+        if is_jelly_video:
+            show = track.series_name or track.title
+            if track.media_kind == "episode" and track.episode_code:
+                details = show
+                state = track.episode_code
+                if track.episode_name:
+                    state = f"{track.episode_code} · {track.episode_name}"
+            elif track.media_kind == "movie":
+                details = show
+                state = "Movie"
+            else:
+                details = show
+                state = "Jellyfin"
+            payload: dict[str, Any] = {
+                "details": details[:128],
+                "state": state[:128],
+                "large_text": "Jellyfin",
+                "small_text": "Jellyfin",
+                "activity_type": activity_type,
+            }
         else:
-            payload["small_text"] = service_label
+            service_label = track.service_label or self._presence.large_text or "Music"
+            payload = {
+                "details": track.title,
+                "state": track.artist,
+                "large_text": track.album or service_label,
+                "activity_type": activity_type,
+            }
+            if self._presence.small_text:
+                payload["small_text"] = self._presence.small_text
+            else:
+                payload["small_text"] = service_label
 
         if art_url:
             payload["large_image"] = art_url
 
-        if cfg.listen_button.enabled:
+        # Don't attach YouTube Music listen links for Jellyfin films/TV.
+        if cfg.listen_button.enabled and not is_jelly_video:
             url = listen_url(track, cfg.listen_button.target)
             payload["buttons"] = [
                 {"label": cfg.listen_button.label[:32], "url": url}
             ]
-            # Album art click — this is what worked before; do not remove.
             payload["large_url"] = url
 
         if (
@@ -164,26 +263,7 @@ class DiscordStatus:
             if end > start:
                 payload["start"] = start
                 payload["end"] = end
-
-        try:
-            self._rpc.update(**payload)
-            self._last_track_key = track_key
-            self._last_art_url = art_url
-            self._had_presence = True
-            status = "playing" if track.playing else "paused"
-            listen = payload.get("large_url")
-            log.info(
-                "Presence updated (%s/%s): %s - %s%s%s",
-                status,
-                cfg.display_mode,
-                track.artist,
-                track.title,
-                f" [art={art_url}]" if art_url else " [no art]",
-                f" [listen={listen}]" if listen else "",
-            )
-        except Exception as exc:  # noqa: BLE001
-            log.warning("Failed to update presence: %s", exc)
-            self._mark_disconnected()
+        return payload
 
     def close(self) -> None:
         if self._rpc is not None:
