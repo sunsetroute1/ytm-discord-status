@@ -17,7 +17,12 @@ from .privacy import (
     contains_sensitive_media,
     looks_like_video_site_metadata,
 )
-from .services import WhitelistEntry, match_whitelist
+from .services import (
+    WhitelistEntry,
+    match_blacklist,
+    match_whitelist,
+    synthetic_media_entry,
+)
 
 log = logging.getLogger(__name__)
 
@@ -211,6 +216,8 @@ async def _read_session(
     entries: list[WhitelistEntry],
     *,
     browser_require_catalog_match: bool,
+    media_mode: str = "whitelist",
+    blocked: list[WhitelistEntry] | None = None,
 ) -> NowPlaying | None:
     try:
         app_id = session.source_app_user_model_id or ""
@@ -218,9 +225,14 @@ async def _read_session(
         log.debug("Failed reading session app id: %s", exc)
         return None
 
-    entry = match_whitelist(app_id, entries)
-    if entry is None:
-        return None
+    if media_mode == "blacklist":
+        if match_blacklist(app_id, blocked or []):
+            return None
+        entry = match_whitelist(app_id, entries) or synthetic_media_entry(app_id)
+    else:
+        entry = match_whitelist(app_id, entries)
+        if entry is None:
+            return None
 
     try:
         props = await session.try_get_media_properties_async()
@@ -237,7 +249,10 @@ async def _read_session(
     if not title:
         return None
 
-    jellyfin_enabled = any(e.id == "jellyfin" for e in entries)
+    # Blacklist mode treats Jellyfin as always available for web longform heuristics.
+    jellyfin_enabled = media_mode == "blacklist" or any(
+        e.id == "jellyfin" for e in entries
+    )
     position_seconds, duration_seconds = _read_timeline(session)
 
     # Films/TV (Jellyfin web or desktop) often omit artist — keep a displayable value.
@@ -251,6 +266,8 @@ async def _read_session(
             and _looks_like_jellyfin_web_playback(artist, duration_seconds)
         ):
             display_artist = "Jellyfin"
+        elif media_mode == "blacklist" and not entry.is_browser:
+            display_artist = entry.label or "Media"
         else:
             # Music apps / normal browser music still require an artist field.
             return None
@@ -308,8 +325,10 @@ async def get_now_playing(
     entries: list[WhitelistEntry],
     *,
     browser_require_catalog_match: bool = True,
+    media_mode: str = "whitelist",
+    blocked: list[WhitelistEntry] | None = None,
 ) -> NowPlaying | None:
-    """Return the best whitelist-matched music session, if any."""
+    """Return the best media session for the configured mode, if any."""
     manager = await MediaManager.request_async()
     try:
         sessions = list(manager.get_sessions())
@@ -343,6 +362,8 @@ async def get_now_playing(
             session,
             entries,
             browser_require_catalog_match=browser_require_catalog_match,
+            media_mode=media_mode,
+            blocked=blocked,
         )
         if track is None:
             continue
@@ -366,12 +387,16 @@ class MediaPoller:
         entries: list[WhitelistEntry],
         *,
         browser_require_catalog_match: bool = True,
+        media_mode: str = "whitelist",
+        blocked: list[WhitelistEntry] | None = None,
     ) -> NowPlaying | None:
         with self._lock:
             return self._loop.run_until_complete(
                 get_now_playing(
                     entries,
                     browser_require_catalog_match=browser_require_catalog_match,
+                    media_mode=media_mode,
+                    blocked=blocked,
                 )
             )
 
@@ -394,10 +419,14 @@ def get_now_playing_sync(
     entries: Iterable[WhitelistEntry],
     *,
     browser_require_catalog_match: bool = True,
+    media_mode: str = "whitelist",
+    blocked: list[WhitelistEntry] | None = None,
 ) -> NowPlaying | None:
     return asyncio.run(
         get_now_playing(
             list(entries),
             browser_require_catalog_match=browser_require_catalog_match,
+            media_mode=media_mode,
+            blocked=blocked,
         )
     )

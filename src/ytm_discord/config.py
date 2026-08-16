@@ -7,14 +7,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .jellyfin_meta import DEFAULT_JELLYFIN_CLIENT_ID, JellyfinConfig
 from .services import (
+    ALL_BLACKLIST_ENTRIES,
     ALL_ENTRIES,
     BROWSER_WHITELIST,
+    DEFAULT_BLACKLIST_IDS,
     DEFAULT_ENABLED_IDS,
     DEFAULT_WHITELIST,
+    MEDIA_MODES,
+    WhitelistEntry,
+    known_catalog_entries,
+    resolve_blacklist,
     resolve_whitelist,
 )
-from .jellyfin_meta import JellyfinConfig
 
 
 APP_NAME = "ytm-discord-status"
@@ -42,22 +48,34 @@ class AppConfig:
     clear_on_pause: bool = True
     reconnect_interval_seconds: float = 15.0
     display_mode: str = "override"
+    # whitelist = only listed apps; blacklist = all media except blocked apps
+    media_mode: str = "whitelist"
     show_artwork: bool = True
     artwork_webhook: str | None = None
     whitelist: tuple[str, ...] = DEFAULT_ENABLED_IDS
+    blacklist: tuple[str, ...] = DEFAULT_BLACKLIST_IDS
     allow_browsers: bool = True
     browser_require_catalog_match: bool = True
     listen_button: ListenButtonConfig = field(default_factory=ListenButtonConfig)
     presence: PresenceConfig = field(default_factory=PresenceConfig)
     jellyfin: JellyfinConfig = field(default_factory=JellyfinConfig)
 
-    def resolved_whitelist(self):
+    def resolved_whitelist(self) -> list[WhitelistEntry]:
         ids = list(self.whitelist)
         if self.allow_browsers:
             for entry in BROWSER_WHITELIST:
                 if entry.id not in ids:
                     ids.append(entry.id)
         return resolve_whitelist(tuple(ids))
+
+    def resolved_blacklist(self) -> list[WhitelistEntry]:
+        return resolve_blacklist(self.blacklist)
+
+    def resolved_media_entries(self) -> list[WhitelistEntry]:
+        """Entries used for allow-matching (whitelist mode) or labeling (blacklist)."""
+        if self.media_mode == "blacklist":
+            return known_catalog_entries()
+        return self.resolved_whitelist()
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AppConfig:
@@ -77,6 +95,10 @@ class AppConfig:
                 f"display_mode must be one of: {', '.join(DISPLAY_MODES)}"
             )
 
+        media_mode = str(data.get("media_mode", "whitelist")).strip().lower()
+        if media_mode not in MEDIA_MODES:
+            raise ValueError(f"media_mode must be one of: {', '.join(MEDIA_MODES)}")
+
         webhook = data.get("artwork_webhook")
         webhook_s = str(webhook).strip() if webhook else None
         if webhook_s == "":
@@ -95,6 +117,7 @@ class AppConfig:
             listen_label = "Listen along"
 
         whitelist = _parse_whitelist(data)
+        blacklist = _parse_blacklist(data)
         jelly_raw = data.get("jellyfin") or {}
         if jelly_raw is None:
             jelly_raw = {}
@@ -107,9 +130,11 @@ class AppConfig:
             clear_on_pause=bool(data.get("clear_on_pause", True)),
             reconnect_interval_seconds=float(data.get("reconnect_interval_seconds", 15)),
             display_mode=display_mode,
+            media_mode=media_mode,
             show_artwork=bool(data.get("show_artwork", True)),
             artwork_webhook=webhook_s,
             whitelist=whitelist,
+            blacklist=blacklist,
             allow_browsers=bool(data.get("allow_browsers", True)),
             browser_require_catalog_match=bool(
                 data.get("browser_require_catalog_match", True)
@@ -126,7 +151,8 @@ class AppConfig:
             jellyfin=JellyfinConfig(
                 base_url=str(jelly_raw.get("base_url", "") or "").strip(),
                 api_key=str(jelly_raw.get("api_key", "") or "").strip(),
-                client_id=str(jelly_raw.get("client_id", "") or "").strip(),
+                client_id=str(jelly_raw.get("client_id", "") or "").strip()
+                or DEFAULT_JELLYFIN_CLIENT_ID,
             ),
         )
 
@@ -171,6 +197,26 @@ def _parse_whitelist(data: dict[str, Any]) -> tuple[str, ...]:
         return tuple(dict.fromkeys(mapped))
 
     return DEFAULT_ENABLED_IDS
+
+
+def _parse_blacklist(data: dict[str, Any]) -> tuple[str, ...]:
+    if "blacklist" not in data:
+        return DEFAULT_BLACKLIST_IDS
+    raw = data.get("blacklist") or []
+    if not isinstance(raw, (list, tuple)):
+        raise ValueError("blacklist must be a list of blocked app ids")
+    if not raw:
+        return DEFAULT_BLACKLIST_IDS
+    ids = tuple(str(x).lower().strip() for x in raw if str(x).strip())
+    unknown = [i for i in ids if i not in ALL_BLACKLIST_ENTRIES]
+    if unknown:
+        raise ValueError(
+            "Unknown blacklist ids: "
+            + ", ".join(unknown)
+            + ". Known: "
+            + ", ".join(sorted(ALL_BLACKLIST_ENTRIES))
+        )
+    return ids
 
 
 def is_frozen() -> bool:
@@ -251,10 +297,13 @@ def load_config(path: Path | None = None) -> AppConfig:
         raise ValueError("poll_interval_seconds must be >= 1")
     if cfg.reconnect_interval_seconds < 1:
         raise ValueError("reconnect_interval_seconds must be >= 1")
-    if not cfg.whitelist:
-        raise ValueError("whitelist must contain at least one service id")
-    if not cfg.resolved_whitelist():
-        raise ValueError("whitelist resolved to no known services")
+    if cfg.media_mode == "whitelist":
+        if not cfg.whitelist:
+            raise ValueError("whitelist must contain at least one service id")
+        if not cfg.resolved_whitelist():
+            raise ValueError("whitelist resolved to no known services")
+    elif not cfg.resolved_blacklist():
+        raise ValueError("blacklist resolved to no known blocked apps")
     return cfg
 
 
@@ -273,7 +322,9 @@ def ensure_user_config_from_example(client_id: str | None = None) -> Path:
             "poll_interval_seconds": 5,
             "clear_on_pause": True,
             "reconnect_interval_seconds": 15,
+            "media_mode": "whitelist",
             "whitelist": list(DEFAULT_ENABLED_IDS),
+            "blacklist": list(DEFAULT_BLACKLIST_IDS),
             "allow_browsers": True,
             "browser_require_catalog_match": True,
             "presence": {"large_text": "Music", "small_text": ""},

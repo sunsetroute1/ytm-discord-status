@@ -1,8 +1,10 @@
 # Music → Discord status
 
-Windows app that mirrors **whitelisted music apps only** into Discord Rich Presence.
+Windows app that mirrors now-playing media into Discord Rich Presence.
 
-**Privacy model:** whitelist-only. Spotify, Deezer, Winamp, foobar2000, Apple Music, etc. are allowed. Everything else (browsers playing random/adult/personal video, VLC, Photos, …) is ignored unless you explicitly enable browsers — and even then a **music catalog match** is required.
+**Privacy model (default):** `media_mode: "whitelist"` — Spotify, Deezer, Winamp, foobar2000, Apple Music, Jellyfin, etc. Everything else is ignored. Browsers need a **music catalog match** when enabled.
+
+**All-media mode:** `media_mode: "blacklist"` — mirrors any SMTC session except blocked apps (VLC, Photos, Movies & TV, meetings, …). Sensitive keywords and browser catalog gates still apply.
 
 ## Where to see your status
 
@@ -12,9 +14,18 @@ Not the green Spotify bar. Click your avatar → profile card, or check a server
 
 | `display_mode` | Behavior |
 |----------------|----------|
-| `override` (default) | **Playing** — competes with game status |
-| `alongside` | **Listening** — game stays primary |
+| `override` (default) | **Playing** — primary card; competes with game status (music and Jellyfin) |
+| `alongside` | **Listening** / **Watching** — game stays primary |
 | `watching` | **Watching** |
+
+## Media modes
+
+| `media_mode` | Behavior |
+|--------------|----------|
+| `whitelist` (default) | Only listed music/media apps (+ optional browsers) |
+| `blacklist` | All media except `blacklist` apps |
+
+Installer: `install.ps1 -MediaMode whitelist` or `-MediaMode blacklist` (prompts if omitted on first setup).
 
 ## Whitelist
 
@@ -27,19 +38,18 @@ Default includes: Spotify, Apple Music, Amazon Music, Deezer, TIDAL, SoundCloud,
 
 Browsers (Brave/Chrome/…) stay off the music-app list unless `allow_browsers` is true. Browser sessions must match Deezer/iTunes as a real song, so porn / personal videos / random YouTube do not become presence.
 
-**Jellyfin** is supported via Jellyfin Media Player and the **web UI in a browser**. Presence shows as watching with show art (TVMaze). For real `S2E3` episode codes and Jellyfin posters, set:
+**Jellyfin** is supported via Jellyfin Media Player and the **web UI in a browser**. Presence is app-aware: films/TV use the Jellyfin Discord app (header shows **Jellyfin**); music stays on your music app. For real `S2E3` episode codes and Jellyfin posters, set:
 
 ```json
 "jellyfin": {
   "base_url": "https://your-jellyfin-host",
-  "api_key": "YOUR_API_KEY",
-  "client_id": ""
+  "api_key": "YOUR_API_KEY"
 }
 ```
 
-Create the API key in Jellyfin → Dashboard → API Keys. Optional `client_id`: a second Discord Application **named Jellyfin** so the status header isn't your music app name (YouTube Music).
+Create the API key in Jellyfin → Dashboard → API Keys. `client_id` defaults to the project Jellyfin Discord Application — override only if you maintain your own.
 
-Web films/TV are detected as title-only + long runtime when `jellyfin` is whitelisted. Random YouTube tabs (channel as artist) still need a music catalog match.
+Web films/TV are detected as title-only + long runtime when `jellyfin` is whitelisted (or in blacklist mode). Random YouTube tabs (channel as artist) still need a music catalog match.
 
 YouTube Music in a browser often reports a **playlist/channel name** as the artist and `Real Artist - Song` as the title. The catalog gate unwraps that pattern so legitimate tracks still show, without relaxing the privacy check.
 

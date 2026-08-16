@@ -70,10 +70,38 @@ BROWSER_WHITELIST: tuple[WhitelistEntry, ...] = (
     WhitelistEntry("chromium", "Chromium", ("chromium",), is_browser=True),
 )
 
+# Blacklist mode: mirror all SMTC sessions except these (personal / generic players).
+DEFAULT_BLACKLIST: tuple[WhitelistEntry, ...] = (
+    WhitelistEntry("vlc", "VLC", ("vlc",)),
+    WhitelistEntry(
+        "photos",
+        "Photos",
+        ("microsoft.photos", "microsoft.windows.photos", "photos.exe"),
+    ),
+    WhitelistEntry(
+        "movies_tv",
+        "Movies & TV",
+        ("zunevideo", "microsoft.zunevideo", "moviesandtv", "movies & tv"),
+    ),
+    WhitelistEntry("mpv", "mpv", ("mpv",)),
+    WhitelistEntry("mpc", "MPC-HC / MPC-BE", ("mpc-hc", "mpc-be", "mpc-qt")),
+    WhitelistEntry("potplayer", "PotPlayer", ("potplayer",)),
+    WhitelistEntry("gom", "GOM Player", ("gomplayer", "gom.exe")),
+    WhitelistEntry("kmplayer", "KMPlayer", ("kmplayer",)),
+    WhitelistEntry("zoom", "Zoom", ("zoom.exe", "zoom.us", "zoomworkplace")),
+    WhitelistEntry("teams", "Microsoft Teams", ("teams.exe", "ms-teams", "microsoft teams")),
+    WhitelistEntry("skype", "Skype", ("skype",)),
+    WhitelistEntry("discord", "Discord", ("discord.exe", "discordptb", "discordcanary")),
+)
+
 ALL_ENTRIES = {e.id: e for e in (*DEFAULT_WHITELIST, *BROWSER_WHITELIST)}
+ALL_BLACKLIST_ENTRIES = {e.id: e for e in DEFAULT_BLACKLIST}
 
 # Safe defaults: dedicated music apps only (no browsers).
 DEFAULT_ENABLED_IDS = tuple(e.id for e in DEFAULT_WHITELIST)
+DEFAULT_BLACKLIST_IDS = tuple(e.id for e in DEFAULT_BLACKLIST)
+
+MEDIA_MODES = ("whitelist", "blacklist")
 
 
 def resolve_whitelist(enabled_ids: tuple[str, ...]) -> list[WhitelistEntry]:
@@ -81,6 +109,17 @@ def resolve_whitelist(enabled_ids: tuple[str, ...]) -> list[WhitelistEntry]:
     seen: set[str] = set()
     for eid in enabled_ids:
         entry = ALL_ENTRIES.get(eid)
+        if entry and entry.id not in seen:
+            out.append(entry)
+            seen.add(entry.id)
+    return out
+
+
+def resolve_blacklist(enabled_ids: tuple[str, ...]) -> list[WhitelistEntry]:
+    out: list[WhitelistEntry] = []
+    seen: set[str] = set()
+    for eid in enabled_ids:
+        entry = ALL_BLACKLIST_ENTRIES.get(eid)
         if entry and entry.id not in seen:
             out.append(entry)
             seen.add(entry.id)
@@ -95,3 +134,23 @@ def match_whitelist(app_id: str, entries: list[WhitelistEntry]) -> WhitelistEntr
         if any(token in needle for token in entry.tokens):
             return entry
     return None
+
+
+def match_blacklist(app_id: str, entries: list[WhitelistEntry]) -> WhitelistEntry | None:
+    """Same token matching as whitelist; used to reject sessions in blacklist mode."""
+    return match_whitelist(app_id, entries)
+
+
+def known_catalog_entries() -> list[WhitelistEntry]:
+    """All known apps (music + browsers) for labeling in blacklist mode."""
+    return list(ALL_ENTRIES.values())
+
+
+def synthetic_media_entry(app_id: str) -> WhitelistEntry:
+    """Fallback entry for unknown apps in blacklist (all-media) mode."""
+    raw = (app_id or "").strip() or "Media"
+    short = raw.split("!")[-1].split("\\")[-1]
+    if short.lower().endswith(".exe"):
+        short = short[:-4]
+    label = short[:64] if short else "Media"
+    return WhitelistEntry("other", label, (), is_browser=False)

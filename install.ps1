@@ -4,12 +4,15 @@
   Install YouTube Music -> Discord status updater (hidden background app).
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File .\install.ps1 -ClientId 1536877982222913626 -Build -StartNow
+  powershell -ExecutionPolicy Bypass -File .\install.ps1 -ClientId 1536877982222913626 -MediaMode whitelist -Build -StartNow
 
   Auto-starts with Discord after reboot by default (logon watchdog). Use -NoAutoStart to skip.
+  -MediaMode whitelist|blacklist selects privacy mode (prompts if unset on first setup).
 #>
 param(
   [string]$ClientId = "",
+  [ValidateSet("", "whitelist", "blacklist")]
+  [string]$MediaMode = "",
   [switch]$Build,
   [switch]$StartWithWindows, # kept for compat; auto-start is now default
   [switch]$NoAutoStart,
@@ -154,6 +157,41 @@ if (-not ($cfg.PSObject.Properties.Name -contains "allow_browsers")) {
 if (-not ($cfg.PSObject.Properties.Name -contains "browser_require_catalog_match")) {
   $cfg | Add-Member -NotePropertyName browser_require_catalog_match -NotePropertyValue $true
 }
+
+# media_mode: whitelist (safe default) vs blacklist (all-media watcher).
+$chosenMode = $MediaMode
+if (-not $chosenMode) {
+  if ($cfg.PSObject.Properties.Name -contains "media_mode" -and $cfg.media_mode) {
+    $chosenMode = [string]$cfg.media_mode
+  }
+}
+if (-not $chosenMode) {
+  Write-Host ""
+  Write-Host "Media mode:" -ForegroundColor Yellow
+  Write-Host "  [1] Whitelist (recommended) - only music apps + optional browsers"
+  Write-Host "  [2] Blacklist - all media except blocked apps (VLC, Photos, Meetings, ...)"
+  $pick = Read-Host "Choose 1 or 2"
+  if ($pick -eq "2") { $chosenMode = "blacklist" } else { $chosenMode = "whitelist" }
+}
+if ($chosenMode -notin @("whitelist", "blacklist")) {
+  throw "MediaMode must be whitelist or blacklist."
+}
+if (-not ($cfg.PSObject.Properties.Name -contains "media_mode")) {
+  $cfg | Add-Member -NotePropertyName media_mode -NotePropertyValue $chosenMode
+} else {
+  $cfg.media_mode = $chosenMode
+}
+
+$defaultBlacklist = @(
+  "vlc", "photos", "movies_tv", "mpv", "mpc", "potplayer",
+  "gom", "kmplayer", "zoom", "teams", "skype", "discord"
+)
+if (-not ($cfg.PSObject.Properties.Name -contains "blacklist")) {
+  $cfg | Add-Member -NotePropertyName blacklist -NotePropertyValue $defaultBlacklist
+} elseif (-not $cfg.blacklist) {
+  $cfg.blacklist = $defaultBlacklist
+}
+
 # Soft-upgrade: append newly shipped music apps missing from older explicit whitelists.
 $upgradeIds = @("jellyfin")
 if ($cfg.PSObject.Properties.Name -contains "whitelist" -and $cfg.whitelist) {
@@ -167,8 +205,13 @@ if (-not ($cfg.PSObject.Properties.Name -contains "jellyfin")) {
   $cfg | Add-Member -NotePropertyName jellyfin -NotePropertyValue ([pscustomobject]@{
     base_url = ""
     api_key = ""
-    client_id = ""
+    client_id = "1538354735512424518"
   })
+} else {
+  # Soft-upgrade: fill empty jellyfin.client_id with the shipped Jellyfin Discord app.
+  if (-not $cfg.jellyfin.client_id) {
+    $cfg.jellyfin | Add-Member -NotePropertyName client_id -NotePropertyValue "1538354735512424518" -Force
+  }
 }
 ($cfg | ConvertTo-Json -Depth 6) + "`n" | Set-Content -Path $configPath -Encoding UTF8
 
@@ -227,6 +270,7 @@ if ($EnableAutoStart -or $StartWithWindows) {
 }
 Write-Host ""
 Write-Host "Album art uses Deezer/iTunes CDNs (Discord cannot proxy catbox reliably)." -ForegroundColor Yellow
+Write-Host "Media mode: $($cfg.media_mode) (change via install -MediaMode whitelist|blacklist or config.json)." -ForegroundColor Yellow
 Write-Host "Browser tracks need a Deezer/iTunes catalog match; Jellyfin music/films/TV are allowed." -ForegroundColor Yellow
 Write-Host "No Discord restart needed - just open your profile card after a track change."
 Write-Host ""

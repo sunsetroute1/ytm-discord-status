@@ -4,6 +4,7 @@
   "clear_on_pause": true,
   "reconnect_interval_seconds": 15,
   "display_mode": "override",
+  "media_mode": "whitelist",
   "show_artwork": true,
   "artwork_webhook": null,
   "whitelist": [
@@ -33,6 +34,20 @@
     "dopamine",
     "neutron"
   ],
+  "blacklist": [
+    "vlc",
+    "photos",
+    "movies_tv",
+    "mpv",
+    "mpc",
+    "potplayer",
+    "gom",
+    "kmplayer",
+    "zoom",
+    "teams",
+    "skype",
+    "discord"
+  ],
   "allow_browsers": true,
   "browser_require_catalog_match": true,
   "listen_button": {
@@ -43,7 +58,7 @@
   "jellyfin": {
     "base_url": "",
     "api_key": "",
-    "client_id": ""
+    "client_id": "1538354735512424518"
   },
   "presence": {
     "large_text": "Music",

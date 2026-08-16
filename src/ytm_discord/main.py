@@ -87,18 +87,31 @@ def main() -> int:
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, _stop)
 
-    log.info("Music -> Discord status updater started (whitelist-only)")
+    log.info("Music -> Discord status updater started (%s mode)", cfg.media_mode)
     log.info("Log file: %s", log_path)
     log.info("Config: %s", cfg_file)
-    entries = cfg.resolved_whitelist()
-    log.info(
-        "Polling every %ss. Display mode: %s. Whitelist: %s (browsers=%s catalog_gate=%s)",
-        cfg.poll_interval_seconds,
-        cfg.display_mode,
-        ", ".join(e.id for e in entries),
-        cfg.allow_browsers,
-        cfg.browser_require_catalog_match,
-    )
+    entries = cfg.resolved_media_entries()
+    blocked = cfg.resolved_blacklist() if cfg.media_mode == "blacklist" else []
+    if cfg.media_mode == "blacklist":
+        log.info(
+            "Polling every %ss. Display mode: %s. Media mode: blacklist. "
+            "Blocked: %s (browsers=%s catalog_gate=%s)",
+            cfg.poll_interval_seconds,
+            cfg.display_mode,
+            ", ".join(e.id for e in blocked),
+            cfg.allow_browsers,
+            cfg.browser_require_catalog_match,
+        )
+    else:
+        log.info(
+            "Polling every %ss. Display mode: %s. Media mode: whitelist. "
+            "Allowed: %s (browsers=%s catalog_gate=%s)",
+            cfg.poll_interval_seconds,
+            cfg.display_mode,
+            ", ".join(e.id for e in entries),
+            cfg.allow_browsers,
+            cfg.browser_require_catalog_match,
+        )
 
     had_track = False
 
@@ -108,6 +121,8 @@ def main() -> int:
                 track = poller.get_now_playing(
                     entries,
                     browser_require_catalog_match=cfg.browser_require_catalog_match,
+                    media_mode=cfg.media_mode,
+                    blocked=blocked,
                 )
                 if track is None:
                     if had_track:

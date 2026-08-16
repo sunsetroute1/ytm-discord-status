@@ -9,7 +9,13 @@ from ytm_discord.privacy import (
     contains_sensitive_media,
     looks_like_video_site_metadata,
 )
-from ytm_discord.services import match_whitelist, resolve_whitelist
+from ytm_discord.services import (
+    match_blacklist,
+    match_whitelist,
+    resolve_blacklist,
+    resolve_whitelist,
+    synthetic_media_entry,
+)
 
 
 def test_config_roundtrip(tmp_path: Path) -> None:
@@ -60,9 +66,42 @@ def test_from_dict_defaults() -> None:
     cfg = AppConfig.from_dict({"client_id": "1"})
     assert cfg.clear_on_pause is True
     assert cfg.display_mode == "override"
+    assert cfg.media_mode == "whitelist"
     assert "spotify" in cfg.whitelist
     assert "deezer" in cfg.whitelist
     assert "winamp" in cfg.whitelist
+    assert "vlc" in cfg.blacklist
+
+
+def test_blacklist_mode_config(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    path.write_text(
+        json.dumps(
+            {
+                "client_id": "1536877982222913626",
+                "media_mode": "blacklist",
+                "blacklist": ["vlc", "photos"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    cfg = load_config(path)
+    assert cfg.media_mode == "blacklist"
+    assert cfg.blacklist == ("vlc", "photos")
+    assert [e.id for e in cfg.resolved_blacklist()] == ["vlc", "photos"]
+
+
+def test_rejects_bad_media_mode(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    path.write_text(
+        json.dumps({"client_id": "1536877982222913626", "media_mode": "open"}),
+        encoding="utf-8",
+    )
+    try:
+        load_config(path)
+        raise AssertionError("expected ValueError")
+    except ValueError as exc:
+        assert "media_mode" in str(exc)
 
 
 def test_ensure_user_config(tmp_path: Path, monkeypatch) -> None:
@@ -116,6 +155,21 @@ def test_whitelist_match_spotify_and_winamp() -> None:
     assert match_whitelist("BraveBeta", entries) is None
     assert match_whitelist("vlc", entries) is None
     assert match_whitelist("chrome", entries) is None
+
+
+def test_blacklist_blocks_vlc_and_photos() -> None:
+    blocked = resolve_blacklist(("vlc", "photos", "discord"))
+    assert match_blacklist("vlc.exe", blocked).id == "vlc"
+    assert match_blacklist("Microsoft.Photos_8wekyb3d8bbwe!App", blocked).id == "photos"
+    assert match_blacklist("Discord.exe", blocked).id == "discord"
+    assert match_blacklist("Spotify.exe", blocked) is None
+    assert match_blacklist("BraveBeta", blocked) is None
+
+
+def test_synthetic_media_entry() -> None:
+    entry = synthetic_media_entry("C:\\Program Files\\Foo\\BarPlayer.exe")
+    assert entry.id == "other"
+    assert "BarPlayer" in entry.label
 
 
 def test_jellyfin_whitelist_tokens() -> None:

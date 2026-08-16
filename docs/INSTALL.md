@@ -34,10 +34,12 @@ Discord prioritizes game detection over Listening activities. Use `display_mode`
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e .
-powershell -ExecutionPolicy Bypass -File .\install.ps1 -Build -ClientId YOUR_APP_ID -StartNow
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Build -ClientId YOUR_APP_ID -MediaMode whitelist -StartNow
 ```
 
 Replace `YOUR_APP_ID` with your Discord Application ID.
+
+`-MediaMode whitelist` (default / recommended) or `blacklist` (all-media watcher except VLC/Photos/…). If omitted on a config that has no `media_mode` yet, the installer prompts.
 
 By default this registers a **logon watchdog** that starts the updater whenever Discord desktop is running (survives reboot). Pass `-NoAutoStart` to skip that.
 

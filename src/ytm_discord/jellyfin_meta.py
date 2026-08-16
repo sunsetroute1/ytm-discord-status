@@ -20,12 +20,17 @@ _SESSION_CACHE: dict[str, tuple[float, dict | None]] = {}
 _SESSION_TTL = 8
 
 
+# Discord Application named "Jellyfin" — used automatically for films/TV so the
+# presence title is app-aware (not the music app name). Override via config if needed.
+DEFAULT_JELLYFIN_CLIENT_ID = "1538354735512424518"
+
+
 @dataclass(frozen=True)
 class JellyfinConfig:
     base_url: str = ""
     api_key: str = ""
-    # Optional Discord Application ID named "Jellyfin" so presence isn't under YouTube Music.
-    client_id: str = ""
+    # Discord Application ID for Jellyfin Watching presence (defaults to project Jellyfin app).
+    client_id: str = DEFAULT_JELLYFIN_CLIENT_ID
 
 
 def _http_get_json(url: str, headers: dict[str, str] | None = None, timeout: float = 10.0) -> dict | list:

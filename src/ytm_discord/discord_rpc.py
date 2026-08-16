@@ -9,7 +9,11 @@ from pypresence.exceptions import DiscordNotFound, InvalidID, InvalidPipe
 
 from .artwork import ArtworkResolver
 from .config import AppConfig, PresenceConfig
-from .jellyfin_meta import JellyfinConfig, enrich_jellyfin_track
+from .jellyfin_meta import (
+    DEFAULT_JELLYFIN_CLIENT_ID,
+    JellyfinConfig,
+    enrich_jellyfin_track,
+)
 from .listen_link import listen_url
 from .media import NowPlaying
 
@@ -27,7 +31,10 @@ class DiscordStatus:
     ) -> None:
         self._music_client_id = client_id
         self._jellyfin = jellyfin or JellyfinConfig()
-        self._jellyfin_client_id = (self._jellyfin.client_id or "").strip() or client_id
+        # App-aware: films/TV use the Jellyfin Discord Application so the card
+        # title is "Jellyfin", not the music app name.
+        jelly_id = (self._jellyfin.client_id or "").strip()
+        self._jellyfin_client_id = jelly_id or DEFAULT_JELLYFIN_CLIENT_ID
         self._active_client_id = client_id
         self._presence = presence
         self._artwork = ArtworkResolver(enabled=show_artwork, webhook_url=artwork_webhook)
@@ -49,15 +56,17 @@ class DiscordStatus:
 
     @staticmethod
     def _activity_type(display_mode: str, track: NowPlaying) -> ActivityType:
+        # override = Playing so Discord treats it as the primary card (same as music).
+        # Forced Watching was always demoted under games / other activities.
+        if display_mode == "override":
+            return ActivityType.PLAYING
+        if display_mode == "watching":
+            return ActivityType.WATCHING
         if track.service_id == "jellyfin" and track.media_kind in {
             "episode",
             "movie",
             "video",
         }:
-            return ActivityType.WATCHING
-        if display_mode == "override":
-            return ActivityType.PLAYING
-        if display_mode == "watching":
             return ActivityType.WATCHING
         return ActivityType.LISTENING
 
