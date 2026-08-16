@@ -71,9 +71,9 @@ Everything else is ignored.
 
 YouTube Music browser sessions often put a playlist/channel in the artist field and `Artist - Song` in the title. The updater unwraps that for catalog matching so real tracks still work.
 
----
+**Jellyfin Media Player** is supported. Because Jellyfin also plays movies/TV, those sessions need a music catalog match (episode patterns like `S01E02` are ignored).
 
-The packaged exe is built with `--noconsole` (no terminal window).
+The packaged exe is built with `--noconsole` (no terminal window) and launched with `CreateNoWindow` / a hidden WScript watchdog so nothing flashes on the taskbar.
 
 - Start: Start Menu → **YouTube Music Discord Status**
 - Stop: Start Menu → **Stop YouTube Music Discord Status**

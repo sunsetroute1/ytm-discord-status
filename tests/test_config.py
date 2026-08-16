@@ -118,6 +118,22 @@ def test_whitelist_match_spotify_and_winamp() -> None:
     assert match_whitelist("chrome", entries) is None
 
 
+def test_jellyfin_whitelist_tokens() -> None:
+    entries = resolve_whitelist(("jellyfin",))
+    assert match_whitelist("JellyfinMediaPlayer.exe", entries).id == "jellyfin"
+    assert match_whitelist("C:\\Program Files\\Jellyfin\\jellyfin-media-player.exe", entries).id == "jellyfin"
+    assert match_whitelist("com.github.iwalton3.jellyfin-media-player", entries).id == "jellyfin"
+    assert entries[0].require_catalog_match is True
+    assert match_whitelist("vlc", entries) is None
+
+
+def test_jellyfin_in_defaults() -> None:
+    cfg = AppConfig.from_dict({"client_id": "1"})
+    assert "jellyfin" in cfg.whitelist
+    entry = next(e for e in cfg.resolved_whitelist() if e.id == "jellyfin")
+    assert entry.require_catalog_match is True
+
+
 def test_browser_only_when_enabled() -> None:
     entries = resolve_whitelist(("spotify", "brave"))
     assert match_whitelist("BraveBeta", entries).id == "brave"

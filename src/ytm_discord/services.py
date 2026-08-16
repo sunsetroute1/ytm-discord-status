@@ -12,6 +12,8 @@ class WhitelistEntry:
     tokens: tuple[str, ...]
     # Browser processes are unsafe (any tab). Only allowed with catalog confirmation.
     is_browser: bool = False
+    # Also used for apps that play movies/TV as well as music (e.g. Jellyfin).
+    require_catalog_match: bool = False
 
 
 # Whitelist-only. Anything not listed is ignored (blacklisted by omission).
@@ -28,6 +30,19 @@ DEFAULT_WHITELIST: tuple[WhitelistEntry, ...] = (
     WhitelistEntry("qobuz", "Qobuz", ("qobuz",)),
     WhitelistEntry("napster", "Napster", ("napster",)),
     WhitelistEntry("youtube_music_app", "YouTube Music", ("youtubemusic", "youtube.music")),
+    # Self-hosted: music OK; movies/TV blocked via catalog match.
+    WhitelistEntry(
+        "jellyfin",
+        "Jellyfin",
+        (
+            "jellyfinmediaplayer",
+            "jellyfin-media-player",
+            "jellyfin media player",
+            "jellyfinmp",
+            "jellyfin",
+        ),
+        require_catalog_match=True,
+    ),
     # Local / desktop players (music-focused)
     WhitelistEntry("winamp", "Winamp", ("winamp",)),
     WhitelistEntry("foobar2000", "foobar2000", ("foobar2000", "foobar")),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import threading
 from dataclasses import dataclass
 from typing import Iterable
@@ -78,6 +79,20 @@ async def _read_artwork_png(props) -> bytes | None:
         return None
 
 
+def _looks_like_tv_or_movie(title: str, artist: str, album: str) -> bool:
+    """Heuristic for Jellyfin/etc. episode/movie metadata that should never be presence."""
+    blob = f"{title} {artist} {album}"
+    if re.search(r"\bS\d{1,2}\s*E\d{1,3}\b", blob, flags=re.IGNORECASE):
+        return True
+    if re.search(r"\bSeason\s+\d+\b", blob, flags=re.IGNORECASE) and re.search(
+        r"\bEpisode\s+\d+\b", blob, flags=re.IGNORECASE
+    ):
+        return True
+    if re.search(r"\b\d{1,2}x\d{1,3}\b", blob):
+        return True
+    return False
+
+
 def _passes_privacy(
     entry: WhitelistEntry,
     title: str,
@@ -91,13 +106,25 @@ def _passes_privacy(
         log.info("Blocked sensitive media metadata from %s", entry.id)
         return False
 
-    if entry.is_browser:
-        if looks_like_video_site_metadata(title, artist, album):
-            log.info("Blocked video-site metadata from browser session (%s)", entry.id)
-            return False
-        if browser_require_catalog_match and not catalog_confirms_music(artist, title, album):
+    if entry.is_browser and looks_like_video_site_metadata(title, artist, album):
+        log.info("Blocked video-site metadata from browser session (%s)", entry.id)
+        return False
+
+    needs_catalog = entry.require_catalog_match or (
+        entry.is_browser and browser_require_catalog_match
+    )
+    if needs_catalog:
+        if _looks_like_tv_or_movie(title, artist, album):
             log.info(
-                "Ignored browser session (no music catalog match): %s - %s via %s",
+                "Ignored non-music session (TV/movie metadata): %s - %s via %s",
+                artist,
+                title,
+                entry.id,
+            )
+            return False
+        if not catalog_confirms_music(artist, title, album):
+            log.info(
+                "Ignored session (no music catalog match): %s - %s via %s",
                 artist,
                 title,
                 entry.id,

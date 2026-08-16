@@ -12,6 +12,11 @@ $InstallDir = Join-Path $env:LOCALAPPDATA "Programs\ytm-discord-status"
 $ExePath = Join-Path $InstallDir "ytm-discord.exe"
 $LogDir = Join-Path $env:LOCALAPPDATA "ytm-discord-status"
 $LogPath = Join-Path $LogDir "watchdog.log"
+$Helper = Join-Path $InstallDir "start_hidden.ps1"
+
+if (Test-Path -LiteralPath $Helper) {
+  . $Helper
+}
 
 function Write-WatchLog([string]$msg) {
   try {
@@ -45,8 +50,12 @@ function Start-Updater {
   if (Test-UpdaterRunning) {
     return
   }
-  Write-WatchLog "Discord is up - starting ytm-discord"
-  Start-Process -FilePath $ExePath -WorkingDirectory $InstallDir -WindowStyle Hidden
+  Write-WatchLog "Discord is up - starting ytm-discord (hidden)"
+  if (Get-Command Start-HiddenExe -ErrorAction SilentlyContinue) {
+    Start-HiddenExe -FilePath $ExePath -WorkingDirectory $InstallDir
+  } else {
+    Start-Process -FilePath $ExePath -WorkingDirectory $InstallDir -WindowStyle Hidden
+  }
 }
 
 $pauseFlag = Join-Path $LogDir "watchdog.paused"

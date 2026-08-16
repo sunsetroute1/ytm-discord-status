@@ -32,25 +32,38 @@ function Register-DiscordWatchdog {
 
   Write-Step "Registering Discord watchdog (starts updater when Discord is open)..."
 
+  $wscript = Join-Path $env:SystemRoot "System32\wscript.exe"
+  $vbs = Join-Path $InstallDir "run_watchdog_hidden.vbs"
   $psExe = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
-  $arg = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$WatchScript`""
 
   # Remove any previous registration (Startup lnk + task).
   Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
   $legacyStartup = Join-Path $Startup "YouTube Music Discord Status.lnk"
   Remove-Item -LiteralPath $legacyStartup -Force -ErrorAction SilentlyContinue
 
-  $action = New-ScheduledTaskAction -Execute $psExe -Argument $arg -WorkingDirectory $InstallDir
+  if (Test-Path -LiteralPath $vbs) {
+    $action = New-ScheduledTaskAction -Execute $wscript -Argument "//B `"$vbs`"" -WorkingDirectory $InstallDir
+  } else {
+    $arg = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$WatchScript`""
+    $action = New-ScheduledTaskAction -Execute $psExe -Argument $arg -WorkingDirectory $InstallDir
+  }
   $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
   # Give the desktop a moment; Discord often starts a few seconds after logon.
   $trigger.Delay = "PT20S"
-  $settings = New-ScheduledTaskSettingsSet `
-    -AllowStartIfOnBatteries `
-    -DontStopIfGoingOnBatteries `
-    -StartWhenAvailable `
-    -RestartCount 3 `
-    -RestartInterval (New-TimeSpan -Minutes 1) `
-    -ExecutionTimeLimit ([TimeSpan]::Zero)
+  $settingsArgs = @{
+    AllowStartIfOnBatteries = $true
+    DontStopIfGoingOnBatteries = $true
+    StartWhenAvailable = $true
+    RestartCount = 3
+    RestartInterval = (New-TimeSpan -Minutes 1)
+    ExecutionTimeLimit = [TimeSpan]::Zero
+  }
+  # -Hidden is supported on modern Windows; ignore if the parameter is missing.
+  try {
+    $settings = New-ScheduledTaskSettingsSet @settingsArgs -Hidden
+  } catch {
+    $settings = New-ScheduledTaskSettingsSet @settingsArgs
+  }
   $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
 
   Register-ScheduledTask `
@@ -62,8 +75,9 @@ function Register-DiscordWatchdog {
     -Description "Starts ytm-discord whenever Discord desktop is running (survives reboot)." `
     -Force | Out-Null
 
-  # Kick the watchdog now so we don't wait for the next logon.
-  Start-Process -FilePath $psExe -ArgumentList $arg -WorkingDirectory $InstallDir -WindowStyle Hidden
+  # Kick the watchdog now so we don't wait for the next logon (no console flash).
+  . (Join-Path $InstallDir "start_hidden.ps1")
+  Start-HiddenPowerShellFile -ScriptPath $WatchScript -WorkingDirectory $InstallDir
 }
 
 Write-Step "Install directory: $InstallDir"
@@ -75,6 +89,9 @@ New-Item -ItemType Directory -Force -Path $StartMenu | Out-Null
 Get-Process ytm-discord -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
   Where-Object { $_.CommandLine -and $_.CommandLine -like '*watch_discord.ps1*' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Get-CimInstance Win32_Process -Filter "Name='wscript.exe'" -ErrorAction SilentlyContinue |
+  Where-Object { $_.CommandLine -and $_.CommandLine -like '*run_watchdog_hidden.vbs*' } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Start-Sleep -Milliseconds 800
 
@@ -96,7 +113,9 @@ Copy-Item -Force (Join-Path $Root "config.example.json") (Join-Path $InstallDir 
 Copy-Item -Force (Join-Path $Root "docs\INSTALL.md") (Join-Path $InstallDir "INSTALL.md")
 Copy-Item -Force (Join-Path $Root "scripts\stop.ps1") (Join-Path $InstallDir "stop.ps1")
 Copy-Item -Force (Join-Path $Root "scripts\start.ps1") (Join-Path $InstallDir "start.ps1")
+Copy-Item -Force (Join-Path $Root "scripts\start_hidden.ps1") (Join-Path $InstallDir "start_hidden.ps1")
 Copy-Item -Force (Join-Path $Root "scripts\watch_discord.ps1") (Join-Path $InstallDir "watch_discord.ps1")
+Copy-Item -Force (Join-Path $Root "scripts\run_watchdog_hidden.vbs") (Join-Path $InstallDir "run_watchdog_hidden.vbs")
 
 $configPath = Join-Path $DataDir "config.json"
 if (-not (Test-Path $configPath)) {
@@ -134,6 +153,15 @@ if (-not ($cfg.PSObject.Properties.Name -contains "allow_browsers")) {
 }
 if (-not ($cfg.PSObject.Properties.Name -contains "browser_require_catalog_match")) {
   $cfg | Add-Member -NotePropertyName browser_require_catalog_match -NotePropertyValue $true
+}
+# Soft-upgrade: append newly shipped music apps missing from older explicit whitelists.
+$upgradeIds = @("jellyfin")
+if ($cfg.PSObject.Properties.Name -contains "whitelist" -and $cfg.whitelist) {
+  $list = @($cfg.whitelist | ForEach-Object { [string]$_ })
+  foreach ($id in $upgradeIds) {
+    if ($list -notcontains $id) { $list += $id }
+  }
+  $cfg.whitelist = $list
 }
 ($cfg | ConvertTo-Json -Depth 6) + "`n" | Set-Content -Path $configPath -Encoding UTF8
 
@@ -192,13 +220,14 @@ if ($EnableAutoStart -or $StartWithWindows) {
 }
 Write-Host ""
 Write-Host "Album art uses Deezer/iTunes CDNs (Discord cannot proxy catbox reliably)." -ForegroundColor Yellow
-Write-Host "Browser tracks need a Deezer/iTunes catalog match (handles YTM channel/playlist artist metadata)." -ForegroundColor Yellow
+Write-Host "Browser/Jellyfin tracks need a Deezer/iTunes catalog match (movies/TV ignored)." -ForegroundColor Yellow
 Write-Host "No Discord restart needed - just open your profile card after a track change."
 Write-Host ""
 
 if ($StartNow) {
   Write-Step "Starting hidden updater..."
   Remove-Item -LiteralPath (Join-Path $DataDir "watchdog.paused") -Force -ErrorAction SilentlyContinue
+  . (Join-Path $InstallDir "start_hidden.ps1")
   $exePath = Join-Path $InstallDir "ytm-discord.exe"
-  Start-Process -FilePath $exePath -WorkingDirectory $InstallDir -WindowStyle Hidden
+  Start-HiddenExe -FilePath $exePath -WorkingDirectory $InstallDir
 }

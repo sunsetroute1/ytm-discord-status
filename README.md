@@ -18,7 +18,7 @@ Not the green Spotify bar. Click your avatar → profile card, or check a server
 
 ## Whitelist
 
-Default includes: Spotify, Apple Music, Amazon Music, Deezer, TIDAL, SoundCloud, Pandora, iHeart, Qobuz, Napster, YouTube Music (app/PWA), Winamp, foobar2000, MusicBee, AIMP, iTunes, MediaMonkey, and other local players.
+Default includes: Spotify, Apple Music, Amazon Music, Deezer, TIDAL, SoundCloud, Pandora, iHeart, Qobuz, Napster, YouTube Music (app/PWA), **Jellyfin** (Media Player), Winamp, foobar2000, MusicBee, AIMP, iTunes, MediaMonkey, and other local players.
 
 ```json
 "allow_browsers": true,
@@ -26,6 +26,8 @@ Default includes: Spotify, Apple Music, Amazon Music, Deezer, TIDAL, SoundCloud,
 ```
 
 Browsers (Brave/Chrome/…) stay off the music-app list unless `allow_browsers` is true. Browser sessions must match Deezer/iTunes as a real song, so porn / personal videos / random YouTube do not become presence.
+
+**Jellyfin** is whitelisted but also catalog-gated (and TV/movie episode patterns are ignored) so films/shows from your library do not become Discord presence — only tracks that look like real catalog music.
 
 YouTube Music in a browser often reports a **playlist/channel name** as the artist and `Real Artist - Song` as the title. The catalog gate unwraps that pattern so legitimate tracks still show, without relaxing the privacy check.
 

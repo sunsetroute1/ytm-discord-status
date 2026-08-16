@@ -12,4 +12,8 @@ Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction Silen
   Where-Object { $_.CommandLine -and $_.CommandLine -like "*watch_discord.ps1*" } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
+Get-CimInstance Win32_Process -Filter "Name='wscript.exe'" -ErrorAction SilentlyContinue |
+  Where-Object { $_.CommandLine -and $_.CommandLine -like "*run_watchdog_hidden.vbs*" } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
 Write-Host "Stopped ytm-discord (auto-start paused until next login)."
